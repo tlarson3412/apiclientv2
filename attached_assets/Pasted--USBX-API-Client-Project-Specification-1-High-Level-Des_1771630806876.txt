@@ -1,0 +1,458 @@
+# USBX API Client - Project Specification
+
+## 1. High-Level Description
+
+### What It Does
+USBX is a full-featured API testing client, similar to Postman or Hoppscotch. It allows developers to:
+- Create, organize, and execute HTTP/REST API requests
+- Test WebSocket connections
+- Manage collections of requests in folders
+- Use environment variables for different deployment contexts
+- Run test assertions against API responses
+- Import/export collections (Postman format)
+- Generate and view API documentation
+
+### Target Users
+- Backend and frontend developers testing APIs
+- QA engineers validating API contracts
+- DevOps teams debugging integrations
+- Technical teams sharing API collections
+
+### What Makes It "Postman-like"
+- **Collections**: Hierarchical organization of requests into named collections and folders
+- **Environments**: Named sets of variables (dev, staging, prod) with `{{variable}}` interpolation
+- **Request Builder**: Full HTTP method support with headers, query params, body editors (JSON, form-data, raw, GraphQL)
+- **Authentication**: Multiple auth types (Basic, Bearer, OAuth 2.0, AWS Signature, API Key, Digest, NTLM, Hawk)
+- **Response Viewer**: Syntax-highlighted response body, headers, timing, size metrics
+- **History**: Automatic logging of executed requests
+- **Testing**: Assertions and scripts (pre-request, post-response) with Postman-compatible test syntax
+- **Import/Export**: Postman Collection v2.1 import support
+
+---
+
+## 2. Tech Stack
+
+### Frontend Framework
+- **React 19** with TypeScript
+- **TailwindCSS 4** for styling (utility-first, no custom CSS files)
+- **Radix UI** primitives (dialogs, dropdowns, tabs, tooltips, etc.)
+- **shadcn/ui** component patterns
+
+### State Management
+- **Zustand** with persistence middleware
+- Async store operations with loading states
+- UI state (theme, active IDs) persisted to localStorage
+
+### Networking Layer
+- **Browser mode**: Native `fetch()` API (subject to CORS)
+- **Electron mode**: Axios via IPC to main process (bypasses CORS)
+- Custom `HttpClient` class with environment detection
+
+### Persistence
+- **Web**: Browser `localStorage` via `LocalDataService`
+- **Electron**: Same localStorage (could extend to file system)
+- **Data Service abstraction**: Interface allows swapping to remote API backend
+
+### Code Editor / Syntax Highlighting
+- **CodeMirror 6** with language modes: JSON, JavaScript, XML, HTML, CSS, Markdown
+
+### Build Tools
+- **Vite 6** for web development and production builds
+- **electron-vite** for Electron builds
+- **Vitest** for unit testing
+- **Playwright** for E2E testing
+- **ESLint** for linting
+
+### Package Manager
+- **npm** (uses `package-lock.json`)
+- Single package (not a monorepo)
+
+### Electron Stack
+- **Electron 37** for desktop app
+- **Main process**: HTTP client with proxy/SSL support, WebSocket handling, OAuth 2.0 flows, secure token storage
+- **Preload script**: IPC bridge exposing `window.electronAPI`
+- **Renderer**: Same React app as web, with feature detection for Electron APIs
+
+---
+
+## 3. Project Structure (Conceptual)
+
+### Web App (`src/renderer/`)
+The primary React application:
+- **Entry point**: `index.html` → `main.tsx` → `App.tsx`
+- **Main view**: `APIClient.tsx` (tabbed interface with request builder, sidebar, response panel)
+- **Components**: UI components, feature components (auth, collections, environments, tests)
+- **Services**: Data abstraction layer (`DataService`, `LocalDataService`, `RemoteDataService`)
+- **Store**: Zustand store with collections, requests, environments, history, settings
+- **Utils**: HTTP client, test engine, bulk runner, mock server engine
+- **Types**: TypeScript interfaces for all domain models
+
+### Electron App (`src/main/`, `src/preload/`)
+Desktop-specific code:
+- **Main process** (`src/main/`): Native HTTP client (Axios), proxy/SSL management, cookie handling, WebSocket client, OAuth 2.0 handler, secure storage
+- **Preload** (`src/preload/`): IPC bridge exposing safe APIs to renderer via `contextBridge`
+- **Shared types** (`src/types/`): IPC message types, HTTP request/response types
+
+### Shared Logic
+- The renderer code (`src/renderer/`) is 100% shared between web and Electron
+- Feature detection (`window.electronAPI`) enables/disables Electron-specific features
+- Same React components render in both environments
+
+---
+
+## 4. Web App Details
+
+### Development Command
+```bash
+npm run dev
+```
+Uses Vite with config file `vite.web.config.ts`.
+
+### Dev Server Port
+**Port 3000** (configurable via Vite config)
+
+### Backend Requirements
+**None** — The web app is fully client-side:
+- Data stored in browser `localStorage`
+- HTTP requests made directly from browser (subject to CORS)
+- No server-side API required
+
+### Environment Variables
+**None required** for basic operation. The app is self-contained.
+
+Optional future variables (for remote data service):
+- `VITE_API_BASE_URL` — Backend API endpoint
+- `VITE_AUTH_TOKEN` — JWT for backend auth
+
+### Routing Approach
+**No router** — Single-page application with tab-based navigation:
+- Tabs for open requests and collections
+- Sidebar navigation between Collections, Environments, History, Mock Servers
+- Modal dialogs for settings, import, save operations
+
+---
+
+## 5. Electron App Details
+
+### What Electron Adds
+- **CORS bypass**: HTTP requests via main process (Axios) bypass browser CORS restrictions
+- **Full response headers**: Access to all headers including those browsers hide
+- **Proxy support**: HTTP/HTTPS/SOCKS4/SOCKS5 with authentication
+- **SSL/TLS**: Custom certificates, self-signed cert handling, client certificates
+- **Cookie management**: Proper cookie jar with domain/path handling
+- **WebSocket connections**: Native WebSocket client without browser limitations
+- **OAuth 2.0**: System browser popup for authorization code flow
+- **Native menus**: Application menu with keyboard shortcuts
+- **File system**: Native save/open dialogs for import/export
+- **Secure storage**: Encrypted token storage (via keytar or similar)
+- **NTLM authentication**: Windows integrated auth (requires native modules)
+
+### Storage Approach
+Same `localStorage` used in web mode. The data service abstraction allows future migration to file-based or SQLite storage.
+
+### UI Approach
+The Electron app embeds the **same React UI** as the web version. No Electron-only UI components — just enhanced capabilities via IPC.
+
+### Feature Detection
+```typescript
+const isElectron = typeof window.electronAPI?.httpRequest === 'function';
+```
+Components check this flag to show/hide Electron-only features (e.g., NTLM auth shows "Electron only" badge in web mode).
+
+---
+
+## 6. Features Checklist
+
+### HTTP Request Builder
+- ✅ All HTTP methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS, TRACE, CONNECT
+- ✅ URL input with environment variable highlighting (`{{baseUrl}}/users`)
+- ✅ Query parameters editor (key-value with enable/disable)
+- ✅ Headers editor (key-value with enable/disable)
+- ✅ Request body types:
+  - None
+  - Form-data (multipart)
+  - x-www-form-urlencoded
+  - Raw (JSON, XML, HTML, JavaScript, Text)
+  - Binary
+  - GraphQL (query + variables)
+- ✅ Body syntax highlighting via CodeMirror
+
+### Authentication
+- ✅ No Auth
+- ✅ Basic Auth (username/password)
+- ✅ Bearer Token
+- ✅ OAuth 2.0 (authorization code, refresh tokens)
+- ✅ AWS Signature v4
+- ✅ API Key (header or query param)
+- ✅ Digest Auth (MD5/SHA-256)
+- ✅ NTLM (Electron only)
+- ✅ Hawk Auth
+- ✅ Auth inheritance from parent collection
+
+### Collections & Organization
+- ✅ Collections (named groups of requests)
+- ✅ Nested folders within collections
+- ✅ Drag-and-drop reordering
+- ✅ Collection-level variables
+- ✅ Collection-level authentication
+- ✅ Collection-level pre-request/post-response scripts
+
+### Environments
+- ✅ Multiple named environments
+- ✅ Variable types: string, secret, number, boolean
+- ✅ Enable/disable individual variables
+- ✅ Initial value vs current value
+- ✅ `{{variable}}` interpolation in URLs, headers, body
+- ✅ Visual highlighting of variables in inputs
+
+### Request History
+- ✅ Automatic logging of executed requests
+- ✅ Timestamp, status, duration for each entry
+- ✅ Clear history
+- ✅ Re-execute from history
+
+### Response Viewer
+- ✅ Status code with color coding
+- ✅ Response time (TTFB + total)
+- ✅ Response size
+- ✅ Response body with syntax highlighting
+- ✅ View modes: Pretty (formatted), Raw, Preview (HTML)
+- ✅ Response headers table
+- ✅ Copy response
+- ✅ Download response
+
+### Testing & Assertions
+- ✅ Test assertions editor (visual)
+- ✅ Assertion types:
+  - Status code
+  - Response time
+  - Response size
+  - Header exists / header value
+  - JSON path
+  - JSON schema validation
+  - Text contains / matches regex
+  - Custom script
+- ✅ Test operators: equals, not-equals, contains, greater-than, less-than, regex, exists, etc.
+- ✅ Pre-request scripts (JavaScript)
+- ✅ Post-response tests (JavaScript)
+- ✅ Postman-compatible test syntax (`pm.test`, `pm.expect`)
+- ✅ Test results display with pass/fail
+- ✅ Collection test runner (run all tests in collection)
+
+### Import / Export
+- ✅ Postman Collection v2.1 import
+- ✅ Drag-and-drop file import
+- ✅ Export collections (JSON)
+- ⬜ Insomnia import (stub only)
+- ⬜ OpenAPI import (stub only)
+- ⬜ cURL import
+
+### Tabs & Workspace
+- ✅ Multi-tab interface for requests
+- ✅ Collection tabs
+- ✅ Inline tab renaming
+- ✅ Tab persistence (within session)
+- ✅ Workspace name editing
+- ✅ Resizable sidebar and panels
+
+### WebSocket Support
+- ✅ WebSocket request type
+- ✅ Connect/disconnect
+- ✅ Send text/JSON/binary messages
+- ✅ Message history (sent/received)
+- ✅ Connection state tracking
+- ✅ Auto-reconnect option
+- ✅ Latency measurement
+
+### GraphQL Support
+- ✅ GraphQL body type
+- ✅ Query editor with syntax highlighting
+- ✅ Variables editor
+- ✅ Operation name
+- ⬜ Schema introspection (partial)
+
+### Mock Server
+- ✅ Create mock servers with multiple endpoints
+- ✅ Define responses with status codes, headers, body
+- ✅ Conditional responses (match on header, query, body, path)
+- ✅ Response delays
+- ✅ Request logging and statistics
+- ✅ CORS configuration
+- Note: Mock server is simulated in-browser, not a real HTTP server
+
+### Documentation
+- ✅ Request documentation editor
+- ✅ Parameter documentation (path, query, headers)
+- ✅ Response documentation
+- ✅ Examples with request/response pairs
+- ✅ Markdown rendering
+
+### Bulk Request Runner
+- ✅ Run multiple requests sequentially
+- ✅ Run multiple requests in parallel (with concurrency limit)
+- ✅ Variable chaining between requests
+- ✅ Progress tracking
+- ✅ Stop on error option
+- ✅ Delay between requests
+
+### Request Templates
+- ✅ 15+ pre-built templates
+- ✅ Categories: REST, GraphQL, Auth, Testing, etc.
+- ✅ Template search and filter
+
+### UI Features
+- ✅ Light/dark theme toggle
+- ✅ System theme detection
+- ✅ Global search (Cmd+K / Ctrl+K)
+- ✅ Keyboard shortcuts
+- ✅ Toast notifications
+- ✅ Error boundary with recovery
+- ✅ Skip links for accessibility
+- ✅ Network debug panel (toggle with Ctrl+Shift+D)
+
+### Settings
+- ✅ Proxy configuration (protocol, host, port, auth, bypass list)
+- ✅ SSL/TLS settings (verification mode, custom certs, client certs)
+- ✅ Network settings (timeout, redirects, keep-alive)
+- ✅ Editor settings (theme, font, tab size, line numbers)
+- ✅ Request settings (cookies, prettify, auto-save, history limit)
+- ✅ General settings (startup behavior, language)
+
+---
+
+## 7. Non-Goals / Simplifications
+
+For a first recreation, these can be omitted or simplified:
+
+### Skip Entirely (Electron-Only)
+- NTLM authentication
+- System proxy detection
+- Custom SSL certificates / client certificates
+- Secure encrypted token storage
+- Native file dialogs (use browser file picker instead)
+- Native application menus
+
+### Simplify
+- **Mock Server**: Currently simulated in-browser. Can be a simple UI without actual server.
+- **WebSocket**: Can start with Electron-only or skip entirely for web-first.
+- **OAuth 2.0**: Can start with token input only, skip authorization code flow.
+- **Bulk Runner**: Can start with sequential-only, skip parallel execution.
+- **Test Scripts**: Can start with assertions-only, skip JavaScript scripting.
+- **Import/Export**: Start with Postman import only, skip other formats.
+- **Request Templates**: Can be a later addition.
+- **Documentation Editor**: Can be a later addition.
+- **Network Debug Panel**: Development tool, not essential.
+
+### Data Layer
+- Start with `localStorage` only
+- The `RemoteDataService` interface exists but doesn't need implementation initially
+
+### Testing
+- Unit tests (Vitest) and E2E tests (Playwright) exist but aren't required to recreate the app
+
+---
+
+## 8. Summary Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         React App                                │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────────┐  │
+│  │   Sidebar   │  │ Request Tabs │  │    Response Panel      │  │
+│  │ Collections │  │   Builder    │  │  Body/Headers/Tests    │  │
+│  │ Environments│  │  Auth/Body   │  │                        │  │
+│  │ History     │  │  Headers     │  │                        │  │
+│  └─────────────┘  └──────────────┘  └────────────────────────┘  │
+│                                                                   │
+│  ┌───────────────────────────────────────────────────────────┐   │
+│  │                    Zustand Store                           │   │
+│  │  collections, requests, environments, history, settings    │   │
+│  └───────────────────────────────────────────────────────────┘   │
+│                              │                                    │
+│                              ▼                                    │
+│  ┌───────────────────────────────────────────────────────────┐   │
+│  │                   Data Service Layer                       │   │
+│  │  ┌─────────────────┐    ┌─────────────────────┐           │   │
+│  │  │LocalDataService │    │ RemoteDataService   │           │   │
+│  │  │  (localStorage) │    │ (future: REST API)  │           │   │
+│  │  └─────────────────┘    └─────────────────────┘           │   │
+│  └───────────────────────────────────────────────────────────┘   │
+│                              │                                    │
+│                              ▼                                    │
+│  ┌───────────────────────────────────────────────────────────┐   │
+│  │                    HTTP Client                             │   │
+│  │  Web: fetch()  │  Electron: IPC → Axios (main process)    │   │
+│  └───────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 9. Replit AI Prompt
+
+Use this prompt to recreate the application in Replit:
+
+---
+
+**Prompt:**
+
+Create a Postman-like API testing client called "USBX" using React, TypeScript, TailwindCSS, and Vite.
+
+**Core Features:**
+1. **Request Builder**: URL input, HTTP method selector (GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS), headers editor (key-value pairs), query params editor, body editor with multiple types (none, JSON, form-data, x-www-form-urlencoded, raw text)
+2. **Collections**: Create named collections, add folders, drag-and-drop organization, save requests to collections
+3. **Environments**: Create named environments with key-value variables, enable/disable variables, `{{variable}}` interpolation in URLs/headers/body
+4. **Response Viewer**: Show status code (color-coded), response time, response size, syntax-highlighted body (JSON/XML/HTML), headers table, copy/download buttons
+5. **Request History**: Auto-log executed requests with timestamp/status/duration
+6. **Tabs**: Multi-tab interface for open requests, tab persistence
+
+**Tech Stack:**
+- React 19 + TypeScript
+- TailwindCSS 4 (utility classes only)
+- Zustand for state management
+- CodeMirror 6 for syntax highlighting
+- Radix UI for accessible components (Dialog, Tabs, Select, Tooltip, etc.)
+- Vite for dev server and builds
+- localStorage for data persistence
+
+**UI Layout:**
+- Left sidebar: Collections tree, Environments list, History list (tabs to switch)
+- Center: Request builder (method + URL + Send button, tabs for Params/Headers/Body/Auth)
+- Right: Response panel (tabs for Body/Headers, view mode toggle)
+
+**Data Models:**
+- Collection: id, name, description, children (requests/folders), variables, authType, timestamps
+- Request: id, name, method, url, headers[], queryParams[], body, bodyType, authType, parentId, timestamps
+- Environment: id, name, variables[], timestamps
+- HistoryEntry: id, request, timestamp, status, duration
+
+**State Management:**
+Use Zustand store with:
+- collections, requests, environments, history arrays
+- activeCollectionId, activeRequestId, activeEnvironmentId
+- CRUD operations for each entity type
+- Persist to localStorage
+
+**Authentication Support:**
+- None, Basic Auth, Bearer Token (start with these 3)
+- Show auth config form based on selected type
+- Apply auth headers when executing request
+
+**Styling:**
+- Dark theme by default (can add light theme toggle later)
+- Use CSS variables for theming
+- Monospace font for code/JSON
+- Color-coded HTTP methods (GET=green, POST=blue, PUT=yellow, DELETE=red)
+
+**Start Simple:**
+1. First: Request builder + Send button + Response viewer
+2. Then: Collections sidebar
+3. Then: Environments with variable interpolation
+4. Then: History
+5. Then: Tabs
+
+The app should work entirely in the browser with no backend required.
+
+---
+
+This specification provides all the information needed to recreate USBX as a web-first API testing client.
