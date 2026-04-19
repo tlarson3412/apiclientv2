@@ -7,7 +7,6 @@ import { RequestBuilder } from '@/components/request/RequestBuilder';
 import { ResponseViewer } from '@/components/response/ResponseViewer';
 import { WebSocketPanel } from '@/components/websocket/WebSocketPanel';
 import { ConsolePanel } from '@/components/console/ConsolePanel';
-import { ApprovalDialog } from '@/components/approval/ApprovalDialog';
 import { CollectionView } from '@/components/collections/CollectionView';
 import { CreateNewModal } from './CreateNewModal';
 import { Typography } from '@/components/ui/typography';
@@ -15,7 +14,6 @@ import { Button } from '@/components/ui/button';
 import { Terminal } from 'lucide-react';
 import usBankLogo from '@/assets/US-Bank-Logo.png';
 import { useConsoleStore } from '@/store/useConsoleStore';
-import { useApprovalStore } from '@/store/useApprovalStore';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { executeRequest } from '@/utils/httpClient';
@@ -29,7 +27,6 @@ export function AppLayout() {
   const [mode, setMode] = useState<'http' | 'websocket'>('http');
   const [showCreateNew, setShowCreateNew] = useState(false);
   const [showConsole, setShowConsole] = useState(false);
-  const [approvalPending, setApprovalPending] = useState<{ ruleName: string; method: string; url: string } | null>(null);
   const consoleLogCount = useConsoleStore(s => s.logs.length);
 
   const doSendRequest = useCallback(async () => {
@@ -65,30 +62,6 @@ export function AppLayout() {
   }, []);
 
   const handleSendRequest = useCallback(async () => {
-    const state = useStore.getState();
-    const activeRequest = state.getActiveRequest();
-    if (!activeRequest || !activeRequest.url.trim()) return;
-
-    const headers: Record<string, string> = {};
-    activeRequest.headers.filter(h => h.enabled && h.key).forEach(h => {
-      headers[h.key] = h.value;
-    });
-
-    const matchedRule = useApprovalStore.getState().checkRequiresApproval(
-      activeRequest.method,
-      state.interpolateVariables(activeRequest.url, activeRequest.collectionId),
-      headers
-    );
-
-    if (matchedRule) {
-      setApprovalPending({
-        ruleName: matchedRule.name,
-        method: activeRequest.method,
-        url: state.interpolateVariables(activeRequest.url, activeRequest.collectionId),
-      });
-      return;
-    }
-
     await doSendRequest();
   }, [doSendRequest]);
 
@@ -212,19 +185,6 @@ export function AppLayout() {
         onClose={() => setShowCreateNew(false)}
         onSwitchToWebSocket={handleSwitchToWebSocket}
       />
-      {approvalPending && (
-        <ApprovalDialog
-          open={true}
-          onClose={() => setApprovalPending(null)}
-          onApprove={() => {
-            setApprovalPending(null);
-            doSendRequest();
-          }}
-          ruleName={approvalPending.ruleName}
-          method={approvalPending.method}
-          url={approvalPending.url}
-        />
-      )}
     </div>
   );
 }

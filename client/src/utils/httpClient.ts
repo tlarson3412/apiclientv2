@@ -3,6 +3,7 @@ import { useConsoleStore } from '../store/useConsoleStore';
 import { v4 as uuidv4 } from 'uuid';
 import { runPmScriptAsync } from './pmSandbox';
 import { substitutePathVariables } from './pathVariables';
+import { vscodeClient } from '../lib/vscodeApi';
 
 function buildAuthHeaders(auth: AuthConfig): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -363,13 +364,9 @@ export async function executeRequest(
       proxyPayload.binaryBase64 = true;
     }
 
-    const proxyResponse = await fetch('/api/proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(proxyPayload),
-    });
+    const proxyResponse = await vscodeClient.executeProxy(proxyPayload) as any;
 
-    const data = await proxyResponse.json();
+    const data = proxyResponse;
     const endTime = performance.now();
 
     let timing: TimingBreakdown | undefined;

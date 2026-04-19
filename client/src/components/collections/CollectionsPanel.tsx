@@ -1,14 +1,14 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useStore } from '@/store/useStore';
 import { Button } from '@/components/ui/button';
 import { Typography } from '@/components/ui/typography';
 import { TextInput } from '@/components/ui/text-input';
 import { FolderOpen, FolderPlus, Plus, Trash2, ChevronRight, ChevronDown, File, Upload, Download, Play, Pencil, ArrowRight, Star, Search, Copy, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { importPostmanCollection, importUSBCollection, exportCollection, downloadFile } from '@/utils/importExport';
+import { importPostmanCollection, importUSBCollection, exportCollection, exportAsUSB, exportAsBruno, downloadFile } from '@/utils/importExport';
 import { parseOpenApiSpec } from '@/utils/openApiImport';
 import { CollectionRunner } from './CollectionRunner';
-import { useWorkspace } from '@/hooks/use-workspace';
+import { vscodeClient } from '@/lib/vscodeApi';
 import type { Collection, CollectionFolder, ApiRequest } from '@/types';
 
 const METHOD_COLORS: Record<string, string> = {
@@ -39,28 +39,51 @@ function RequestTreeItem({
   expandedRequests,
   toggleRequest,
   showMoveToRoot,
+  collectionId,
 }: {
   req: ApiRequest;
   depth: number;
   expandedRequests: Set<string>;
   toggleRequest: (id: string) => void;
   showMoveToRoot?: boolean;
+  collectionId?: string;
 }) {
   const addTab = useStore(s => s.addTab);
   const deleteRequest = useStore(s => s.deleteRequest);
   const moveRequestToFolder = useStore(s => s.moveRequestToFolder);
+  const duplicateRequest = useStore(s => s.duplicateRequest);
+  const updateRequest = useStore(s => s.updateRequest);
+
+  const [renaming, setRenaming] = useState(false);
+  const [renameName, setRenameName] = useState(req.name);
 
   const examples = req.examples || [];
   const hasExamples = examples.length > 0;
   const isExpanded = expandedRequests.has(req.id);
   const paddingLeft = `${depth * 16 + (showMoveToRoot ? 20 : 6)}px`;
 
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData('application/x-request-id', req.id);
+    if (collectionId) e.dataTransfer.setData('application/x-collection-id', collectionId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleRename = () => {
+    const trimmed = renameName.trim();
+    if (trimmed && trimmed !== req.name) {
+      updateRequest(req.id, { name: trimmed });
+    }
+    setRenaming(false);
+  };
+
   return (
     <div>
       <div
+        draggable={!renaming}
+        onDragStart={handleDragStart}
         className="group flex items-center gap-2 w-full px-2 py-1 rounded hover:bg-utility-muted transition-colors text-left cursor-pointer"
         style={{ paddingLeft }}
-        onClick={() => addTab(req.id)}
+        onClick={() => !renaming && addTab(req.id)}
       >
         {hasExamples ? (
           <button
@@ -78,7 +101,26 @@ function RequestTreeItem({
         <span className={cn('text-[11px] font-mono font-medium w-10 shrink-0', METHOD_COLORS[req.method])}>
           {req.method}
         </span>
-        <span className="text-[12px] text-label-mid truncate flex-1">{req.name}</span>
+        {renaming ? (
+          <input
+            value={renameName}
+            onChange={e => setRenameName(e.target.value)}
+            onBlur={handleRename}
+            onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenaming(false); }}
+            className="flex-1 text-[12px] bg-transparent border-b border-standard-subdued text-label-vivid focus:outline-none px-1"
+            autoFocus
+            onClick={e => e.stopPropagation()}
+          />
+        ) : (
+          <span className="text-[12px] text-label-mid truncate flex-1">{req.name}</span>
+        )}
+        <button
+          className="p-0.5 rounded hover:bg-utility-muted transition-colors opacity-0 group-hover:opacity-100"
+          onClick={(e) => { e.stopPropagation(); setRenameName(req.name); setRenaming(true); }}
+          title="Rename request"
+        >
+          <Pencil className="w-3 h-3 text-label-muted" />
+        </button>
         {showMoveToRoot && (
           <button
             className="p-0.5 rounded hover:bg-utility-muted transition-colors opacity-0 group-hover:opacity-100"
@@ -89,7 +131,14 @@ function RequestTreeItem({
           </button>
         )}
         <button
-          className="p-0.5 rounded hover:bg-status-danger-muted transition-colors opacity-0 group-hover:opacity-100 ml-auto"
+          className="p-0.5 rounded hover:bg-utility-muted transition-colors opacity-0 group-hover:opacity-100 ml-auto"
+          onClick={(e) => { e.stopPropagation(); duplicateRequest(req.id); }}
+          title="Duplicate request"
+        >
+          <Copy className="w-3 h-3 text-label-muted" />
+        </button>
+        <button
+          className="p-0.5 rounded hover:bg-status-danger-muted transition-colors opacity-0 group-hover:opacity-100"
           onClick={(e) => { e.stopPropagation(); deleteRequest(req.id); }}
           title="Delete request"
         >
@@ -144,11 +193,13 @@ function FolderTreeItem({
   const addFolderToCollection = useStore(s => s.addFolderToCollection);
   const renameFolderInCollection = useStore(s => s.renameFolderInCollection);
   const deleteFolderFromCollection = useStore(s => s.deleteFolderFromCollection);
+  const moveRequestToFolder = useStore(s => s.moveRequestToFolder);
 
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState(folder.name);
   const [addingSubfolder, setAddingSubfolder] = useState(false);
   const [subfolderName, setSubfolderName] = useState('');
+  const [dragOver, setDragOver] = useState(false);
 
   const isExpanded = expandedFolders.has(folder.id);
   const childFolders = allFolders.filter(f => f.parentId === folder.id);
@@ -170,12 +221,38 @@ function FolderTreeItem({
     }
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('application/x-request-id')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setDragOver(true);
+    }
+  };
+
+  const handleDragLeave = () => setDragOver(false);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const requestId = e.dataTransfer.getData('application/x-request-id');
+    if (requestId) {
+      moveRequestToFolder(requestId, folder.id);
+      if (!isExpanded) toggleFolder(folder.id);
+    }
+  };
+
   return (
     <div>
       <div
-        className="group flex items-center gap-1.5 w-full px-1.5 py-1 rounded hover:bg-utility-muted transition-colors text-left cursor-pointer"
+        className={cn(
+          "group flex items-center gap-1.5 w-full px-1.5 py-1 rounded hover:bg-utility-muted transition-colors text-left cursor-pointer",
+          dragOver && "ring-2 ring-standard-subdued bg-standard-muted"
+        )}
         style={{ paddingLeft: `${depth * 16 + 6}px` }}
         onClick={() => { toggleFolder(folder.id); addFolderTab(collection.id, folder.id); }}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
         {isExpanded ? <ChevronDown className="w-3 h-3 text-label-muted shrink-0" /> : <ChevronRight className="w-3 h-3 text-label-muted shrink-0" />}
         <FolderOpen className="w-3.5 h-3.5 text-status-caution-mid shrink-0" />
@@ -254,6 +331,7 @@ function FolderTreeItem({
               expandedRequests={expandedRequests}
               toggleRequest={toggleRequest}
               showMoveToRoot
+              collectionId={collection.id}
             />
           ))}
 
@@ -282,10 +360,7 @@ export function CollectionsPanel() {
   const addFolderTab = useStore(s => s.addFolderTab);
   const deleteRequest = useStore(s => s.deleteRequest);
   const copyCollection = useStore(s => s.copyCollection);
-  const { workspaces, activeWorkspace, myRole } = useWorkspace();
-  const personalWorkspace = useMemo(() => {
-    return workspaces.find(w => w.id !== activeWorkspace?.id && (w.role === 'owner' || w.role === 'editor'));
-  }, [workspaces, activeWorkspace]);
+  const moveRequestToFolder = useStore(s => s.moveRequestToFolder);
   const [searchQuery, setSearchQuery] = useState('');
   const [newName, setNewName] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -295,8 +370,10 @@ export function CollectionsPanel() {
   const [runnerCollection, setRunnerCollection] = useState<{ id: string; name: string } | null>(null);
   const [addingFolderTo, setAddingFolderTo] = useState<string | null>(null);
   const [folderName, setFolderName] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const openApiInputRef = useRef<HTMLInputElement>(null);
+  const [renamingCollectionId, setRenamingCollectionId] = useState<string | null>(null);
+  const [renameCollectionName, setRenameCollectionName] = useState('');
+  const [dropTargetCollectionId, setDropTargetCollectionId] = useState<string | null>(null);
+  const [exportPickerCollectionId, setExportPickerCollectionId] = useState<string | null>(null);
 
   const sortedCollections = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
@@ -358,78 +435,70 @@ export function CollectionsPanel() {
     }
   };
 
-  const handleImport = () => {
-    fileInputRef.current?.click();
-  };
+  const handleImport = async () => {
+    try {
+      const result = await vscodeClient.openFileDialog({ 'Collection Files': ['json'] });
+      if (!result || !result.content) return;
 
-  const handleOpenApiImport = () => {
-    openApiInputRef.current?.click();
-  };
+      const content = result.content;
+      const parsed = JSON.parse(content);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const content = event.target?.result as string;
-        const parsed = JSON.parse(content);
-
-        let result;
-        if (parsed.info && parsed.item) {
-          result = importPostmanCollection(content);
-        } else if (parsed.version && parsed.collection) {
-          result = importUSBCollection(content);
-        } else {
-          alert('Unrecognized collection format. Supports Postman and USB API Client formats.');
-          return;
-        }
-
-        importCollectionToStore(result.collection, result.requests);
-        setExpandedCollections(prev => {
-          const next = new Set(prev);
-          next.add(result.collection.id);
-          return next;
-        });
-      } catch (err) {
-        alert('Failed to import collection. Please check the file format.');
-        console.error('Import error:', err);
+      let importResult;
+      if (parsed.info && parsed.item) {
+        importResult = importPostmanCollection(content);
+      } else if (parsed.version && parsed.collection) {
+        importResult = importUSBCollection(content);
+      } else {
+        alert('Unrecognized collection format. Supports Postman and USB API Client formats.');
+        return;
       }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
+
+      importCollectionToStore(importResult.collection, importResult.requests);
+      setExpandedCollections(prev => {
+        const next = new Set(prev);
+        next.add(importResult.collection.id);
+        return next;
+      });
+    } catch (err) {
+      alert('Failed to import collection. Please check the file format.');
+      console.error('Import error:', err);
+    }
   };
 
-  const handleOpenApiFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleOpenApiImport = async () => {
+    try {
+      const result = await vscodeClient.openFileDialog({ 'OpenAPI/Swagger': ['json', 'yaml', 'yml'] });
+      if (!result || !result.content) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const content = event.target?.result as string;
-        const result = parseOpenApiSpec(content);
-        importCollectionToStore(result.collection, result.requests);
-        setExpandedCollections(prev => {
-          const next = new Set(prev);
-          next.add(result.collection.id);
-          return next;
-        });
-      } catch (err: any) {
-        alert(`Failed to import OpenAPI spec: ${err.message}`);
-        console.error('OpenAPI import error:', err);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
+      const importResult = parseOpenApiSpec(result.content);
+      importCollectionToStore(importResult.collection, importResult.requests);
+      setExpandedCollections(prev => {
+        const next = new Set(prev);
+        next.add(importResult.collection.id);
+        return next;
+      });
+    } catch (err: any) {
+      alert(`Failed to import OpenAPI spec: ${err.message}`);
+      console.error('OpenAPI import error:', err);
+    }
   };
 
   const handleExport = (collectionId: string) => {
-    const col = collections.find(c => c.id === collectionId);
+    setExportPickerCollectionId(collectionId);
+  };
+
+  const handleExportAs = (format: 'postman' | 'bruno' | 'usb') => {
+    const col = collections.find(c => c.id === exportPickerCollectionId);
     if (!col) return;
-    const json = exportCollection(col, requests);
-    downloadFile(json, `${col.name.replace(/\s+/g, '_')}.json`);
+    const safeName = col.name.replace(/\s+/g, '_');
+    if (format === 'postman') {
+      downloadFile(exportCollection(col, requests), `${safeName}_postman.json`);
+    } else if (format === 'bruno') {
+      downloadFile(exportAsBruno(col, requests), `${safeName}_bruno.json`);
+    } else {
+      downloadFile(exportAsUSB(col, requests), `${safeName}_usb.json`);
+    }
+    setExportPickerCollectionId(null);
   };
 
   return (
@@ -460,21 +529,6 @@ export function CollectionsPanel() {
           />
         </div>
       </div>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".json"
-        onChange={handleFileChange}
-        className="hidden"
-      />
-      <input
-        ref={openApiInputRef}
-        type="file"
-        accept=".json,.yaml,.yml"
-        onChange={handleOpenApiFileChange}
-        className="hidden"
-      />
 
       {showAdd && (
         <div className="flex gap-2">
@@ -507,8 +561,28 @@ export function CollectionsPanel() {
         return (
           <div key={col.id}>
             <div
-              className="group flex items-center gap-2 w-full px-2 py-1.5 rounded hover:bg-utility-muted transition-colors text-left cursor-pointer"
+              className={cn(
+                "group flex items-center gap-2 w-full px-2 py-1.5 rounded hover:bg-utility-muted transition-colors text-left cursor-pointer",
+                dropTargetCollectionId === col.id && "ring-2 ring-standard-subdued bg-standard-muted"
+              )}
               onClick={() => { toggleExpanded(col.id); addCollectionTab(col.id); }}
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes('application/x-request-id')) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  setDropTargetCollectionId(col.id);
+                }
+              }}
+              onDragLeave={() => setDropTargetCollectionId(null)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDropTargetCollectionId(null);
+                const requestId = e.dataTransfer.getData('application/x-request-id');
+                if (requestId) {
+                  moveRequestToFolder(requestId, undefined);
+                  if (!isExpanded) toggleExpanded(col.id);
+                }
+              }}
             >
               {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-label-muted" /> : <ChevronRight className="w-3.5 h-3.5 text-label-muted" />}
               <button
@@ -519,7 +593,37 @@ export function CollectionsPanel() {
                 <Star className={cn('w-3.5 h-3.5', col.starred ? 'fill-status-caution-mid text-status-caution-mid' : 'text-label-muted opacity-0 group-hover:opacity-100')} />
               </button>
               <FolderOpen className="w-4 h-4 text-standard-subdued" />
-              <span className="text-[14px] text-label-vivid flex-1 truncate">{col.name}</span>
+              {renamingCollectionId === col.id ? (
+                <input
+                  value={renameCollectionName}
+                  onChange={e => setRenameCollectionName(e.target.value)}
+                  onBlur={() => {
+                    const trimmed = renameCollectionName.trim();
+                    if (trimmed) updateCollection(col.id, { name: trimmed });
+                    setRenamingCollectionId(null);
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const trimmed = renameCollectionName.trim();
+                      if (trimmed) updateCollection(col.id, { name: trimmed });
+                      setRenamingCollectionId(null);
+                    }
+                    if (e.key === 'Escape') setRenamingCollectionId(null);
+                  }}
+                  className="flex-1 text-[14px] bg-transparent border-b border-standard-subdued text-label-vivid focus:outline-none font-mono px-1"
+                  autoFocus
+                  onClick={e => e.stopPropagation()}
+                />
+              ) : (
+                <span className="text-[14px] text-label-vivid flex-1 truncate">{col.name}</span>
+              )}
+              <button
+                className="p-0.5 rounded hover:bg-utility-muted transition-colors opacity-0 group-hover:opacity-100"
+                onClick={(e) => { e.stopPropagation(); setRenameCollectionName(col.name); setRenamingCollectionId(col.id); }}
+                title="Rename Collection"
+              >
+                <Pencil className="w-3.5 h-3.5 text-label-muted" />
+              </button>
               <button
                 className="p-0.5 rounded hover:bg-utility-muted transition-colors opacity-0 group-hover:opacity-100"
                 onClick={(e) => { e.stopPropagation(); setAddingFolderTo(col.id); if (!isExpanded) toggleExpanded(col.id); }}
@@ -534,15 +638,13 @@ export function CollectionsPanel() {
               >
                 <Play className="w-3.5 h-3.5 text-status-success-mid" />
               </button>
-              {personalWorkspace && (
-                <button
-                  className="p-0.5 rounded hover:bg-utility-muted transition-colors opacity-0 group-hover:opacity-100"
-                  onClick={(e) => { e.stopPropagation(); copyCollection(col.id, personalWorkspace.id); }}
-                  title={`Copy to ${personalWorkspace.name}`}
-                >
-                  <Copy className="w-3.5 h-3.5 text-label-muted" />
-                </button>
-              )}
+              <button
+                className="p-0.5 rounded hover:bg-utility-muted transition-colors opacity-0 group-hover:opacity-100"
+                onClick={(e) => { e.stopPropagation(); copyCollection(col.id); }}
+                title="Copy Collection"
+              >
+                <Copy className="w-3.5 h-3.5 text-label-muted" />
+              </button>
               <button
                 className="p-0.5 rounded hover:bg-utility-muted transition-colors opacity-0 group-hover:opacity-100"
                 onClick={(e) => { e.stopPropagation(); handleExport(col.id); }}
@@ -550,7 +652,7 @@ export function CollectionsPanel() {
               >
                 <Download className="w-3.5 h-3.5 text-label-muted" />
               </button>
-              {myRole !== 'viewer' && (
+              {true && (
                 <button
                   className="p-0.5 rounded hover:bg-status-danger-muted transition-colors opacity-0 group-hover:opacity-100"
                   onClick={(e) => { e.stopPropagation(); deleteCollection(col.id); }}
@@ -600,6 +702,7 @@ export function CollectionsPanel() {
                     depth={0}
                     expandedRequests={expandedRequests}
                     toggleRequest={toggleRequest}
+                    collectionId={col.id}
                   />
                 ))}
 
@@ -619,6 +722,53 @@ export function CollectionsPanel() {
           open={true}
           onClose={() => setRunnerCollection(null)}
         />
+      )}
+
+      {exportPickerCollectionId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setExportPickerCollectionId(null)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative bg-surface border border-utility-subdued rounded-lg shadow-xl p-4 min-w-[260px]" onClick={e => e.stopPropagation()}>
+            <Typography variant="subheading-small" className="mb-3">Export Format</Typography>
+            <div className="flex flex-col gap-1.5">
+              <button
+                className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-utility-muted transition-colors text-left"
+                onClick={() => handleExportAs('postman')}
+              >
+                <Download className="w-4 h-4 text-label-muted" />
+                <div>
+                  <div className="text-[13px] text-label-vivid font-medium">Postman</div>
+                  <div className="text-[11px] text-label-muted">Collection v2.1 format</div>
+                </div>
+              </button>
+              <button
+                className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-utility-muted transition-colors text-left"
+                onClick={() => handleExportAs('bruno')}
+              >
+                <Download className="w-4 h-4 text-label-muted" />
+                <div>
+                  <div className="text-[13px] text-label-vivid font-medium">Bruno</div>
+                  <div className="text-[11px] text-label-muted">Bruno collection format</div>
+                </div>
+              </button>
+              <button
+                className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-utility-muted transition-colors text-left"
+                onClick={() => handleExportAs('usb')}
+              >
+                <Download className="w-4 h-4 text-label-muted" />
+                <div>
+                  <div className="text-[13px] text-label-vivid font-medium">USB API Client</div>
+                  <div className="text-[11px] text-label-muted">Native USBX format</div>
+                </div>
+              </button>
+            </div>
+            <button
+              className="mt-3 w-full text-center text-[12px] text-label-muted hover:text-label-mid py-1.5"
+              onClick={() => setExportPickerCollectionId(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

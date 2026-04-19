@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useStore } from '@/store/useStore';
 import { Modal, ModalContent, ModalHeader, ModalTitle } from '@/components/ui/modal';
 import { Typography } from '@/components/ui/typography';
-import { Globe, FolderOpen, Braces, Radio, FileText, FlaskConical } from 'lucide-react';
+import { Globe, FolderOpen, Braces, FileText, FlaskConical } from 'lucide-react';
 
 interface CreateNewModalProps {
   open: boolean;
@@ -25,13 +25,6 @@ const BUILDING_BLOCKS: BuildingBlock[] = [
     label: 'HTTP Request',
     description: 'Create a basic HTTP request',
     color: 'text-status-success-mid',
-  },
-  {
-    id: 'websocket',
-    icon: <Radio className="w-5 h-5" />,
-    label: 'WebSocket Request',
-    description: 'Test and debug your WebSocket connections',
-    color: 'text-standard-subdued',
   },
   {
     id: 'collection',
@@ -79,10 +72,6 @@ export function CreateNewModal({ open, onClose, onSwitchToWebSocket }: CreateNew
     switch (id) {
       case 'http':
         addTab();
-        onClose();
-        break;
-      case 'websocket':
-        onSwitchToWebSocket?.();
         onClose();
         break;
       case 'collection':

@@ -7,6 +7,9 @@ import { HistoryPanel } from '@/components/history/HistoryPanel';
 import { TemplatesPanel } from '@/components/templates/TemplatesPanel';
 import { CreateNewModal } from './CreateNewModal';
 import { Plus, FileUp } from 'lucide-react';
+import { vscodeClient } from '@/lib/vscodeApi';
+import { importPostmanCollection, importUSBCollection } from '@/utils/importExport';
+import { parseOpenApiSpec } from '@/utils/openApiImport';
 
 interface SidebarProps {
   onSwitchToWebSocket?: () => void;
@@ -28,18 +31,36 @@ export function Sidebar({ onSwitchToWebSocket }: SidebarProps) {
           New
         </button>
         <button
-          onClick={() => {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.json,.yaml,.yml';
-            input.onchange = (e) => {
-              const file = (e.target as HTMLInputElement).files?.[0];
-              if (file) {
-                const event = new CustomEvent('import-file', { detail: file });
-                window.dispatchEvent(event);
+          onClick={async () => {
+            try {
+              const result = await vscodeClient.openFileDialog({ 'Collection Files': ['json', 'yaml', 'yml'] });
+              if (!result || !result.content) return;
+
+              const content = result.content;
+              let importResult;
+
+              // Try JSON formats first
+              try {
+                const parsed = JSON.parse(content);
+                if (parsed.info && parsed.item) {
+                  importResult = importPostmanCollection(content);
+                } else if (parsed.version && parsed.collection) {
+                  importResult = importUSBCollection(content);
+                } else if (parsed.openapi || parsed.swagger) {
+                  importResult = parseOpenApiSpec(content);
+                }
+              } catch {
+                // Not JSON — try as YAML OpenAPI
+                importResult = parseOpenApiSpec(content);
               }
-            };
-            input.click();
+
+              if (importResult) {
+                const importCollection = useStore.getState().importCollection;
+                importCollection(importResult.collection, importResult.requests);
+              }
+            } catch (err) {
+              console.error('Import error:', err);
+            }
           }}
           className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-label-muted hover:text-label-vivid hover:bg-utility-muted rounded transition-colors"
         >

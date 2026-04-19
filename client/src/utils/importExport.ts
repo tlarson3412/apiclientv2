@@ -371,12 +371,236 @@ export function exportCollection(
 ): string {
   const collectionRequests = requests.filter(r => r.collectionId === collection.id);
 
-  const exportData = {
+  function buildPostmanAuth(auth?: AuthConfig): any {
+    if (!auth || auth.type === 'none' || auth.type === 'inherit') return undefined;
+    if (auth.type === 'basic') {
+      return {
+        type: 'basic',
+        basic: [
+          { key: 'username', value: auth.basic?.username || '', type: 'string' },
+          { key: 'password', value: auth.basic?.password || '', type: 'string' },
+        ],
+      };
+    }
+    if (auth.type === 'bearer') {
+      return {
+        type: 'bearer',
+        bearer: [{ key: 'token', value: auth.bearer?.token || '', type: 'string' }],
+      };
+    }
+    if (auth.type === 'api-key') {
+      return {
+        type: 'apikey',
+        apikey: [
+          { key: 'key', value: auth.apiKey?.key || '', type: 'string' },
+          { key: 'value', value: auth.apiKey?.value || '', type: 'string' },
+          { key: 'in', value: auth.apiKey?.addTo || 'header', type: 'string' },
+        ],
+      };
+    }
+    return undefined;
+  }
+
+  function buildPostmanEvents(preRequestScript?: string, testScript?: string): any[] {
+    const events: any[] = [];
+    if (preRequestScript?.trim()) {
+      events.push({
+        listen: 'prerequest',
+        script: { exec: preRequestScript.split('\n'), type: 'text/javascript' },
+      });
+    }
+    if (testScript?.trim()) {
+      events.push({
+        listen: 'test',
+        script: { exec: testScript.split('\n'), type: 'text/javascript' },
+      });
+    }
+    return events;
+  }
+
+  function buildPostmanRequest(r: ApiRequest): any {
+    const urlParts = (() => {
+      try {
+        const u = new URL(r.url.startsWith('http') ? r.url : `https://${r.url}`);
+        return {
+          raw: r.url,
+          protocol: u.protocol.replace(':', ''),
+          host: u.hostname.split('.'),
+          path: u.pathname.split('/').filter(Boolean),
+        };
+      } catch {
+        return { raw: r.url };
+      }
+    })();
+
+    const query = r.queryParams
+      .filter(p => p.key)
+      .map(p => ({ key: p.key, value: p.value, disabled: !p.enabled }));
+    if (query.length > 0) (urlParts as any).query = query;
+
+    if (r.pathVariables && r.pathVariables.length > 0) {
+      (urlParts as any).variable = r.pathVariables.map(v => ({
+        key: v.key,
+        value: v.value,
+        description: '',
+      }));
+    }
+
+    const header = r.headers
+      .filter(h => h.key)
+      .map(h => ({ key: h.key, value: h.value, disabled: !h.enabled }));
+
+    const item: any = {
+      method: r.method,
+      header,
+      url: urlParts,
+    };
+
+    if (r.description) item.description = r.description;
+    if (r.auth && r.auth.type !== 'inherit') item.auth = buildPostmanAuth(r.auth);
+
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(r.method) && r.bodyType !== 'none') {
+      if (r.bodyType === 'json' || r.bodyType === 'raw') {
+        item.body = {
+          mode: 'raw',
+          raw: r.body,
+          options: { raw: { language: r.bodyType === 'json' ? 'json' : 'text' } },
+        };
+      } else if (r.bodyType === 'x-www-form-urlencoded') {
+        item.body = {
+          mode: 'urlencoded',
+          urlencoded: (r.bodyUrlEncoded || []).map(p => ({
+            key: p.key, value: p.value, disabled: !p.enabled,
+          })),
+        };
+      } else if (r.bodyType === 'form-data') {
+        item.body = {
+          mode: 'formdata',
+          formdata: (r.bodyFormData || []).map(f => ({
+            key: f.key, value: f.value, type: f.type || 'text', disabled: !f.enabled,
+          })),
+        };
+      } else if (r.bodyType === 'graphql') {
+        item.body = { mode: 'graphql', graphql: { query: r.body } };
+      }
+    }
+
+    return item;
+  }
+
+  function buildPostmanResponses(r: ApiRequest): any[] {
+    if (!r.examples || r.examples.length === 0) return [];
+    return r.examples.map(ex => ({
+      name: ex.name,
+      status: ex.statusText || 'OK',
+      code: ex.status,
+      header: Object.entries(ex.headers).map(([k, v]) => ({ key: k, value: v })),
+      body: ex.body,
+      _postman_previewlanguage: 'json',
+    }));
+  }
+
+  function buildFolderItems(folderId: string): any[] {
+    const childFolders = collection.folders.filter(f => f.parentId === folderId);
+    const folderReqs = collectionRequests.filter(r => r.folderId === folderId);
+
+    const items: any[] = [];
+
+    for (const child of childFolders) {
+      const folderEvents = buildPostmanEvents(child.preRequestScript, child.testScript);
+      const folderItem: any = {
+        name: child.name,
+        item: buildFolderItems(child.id),
+      };
+      if (child.auth) folderItem.auth = buildPostmanAuth(child.auth);
+      if (folderEvents.length > 0) folderItem.event = folderEvents;
+      items.push(folderItem);
+    }
+
+    for (const r of folderReqs) {
+      const events = buildPostmanEvents(r.preRequestScript, r.testScript);
+      const reqItem: any = {
+        name: r.name,
+        request: buildPostmanRequest(r),
+        response: buildPostmanResponses(r),
+      };
+      if (events.length > 0) reqItem.event = events;
+      items.push(reqItem);
+    }
+
+    return items;
+  }
+
+  // Build root items (root folders + root requests)
+  const rootFolders = collection.folders.filter(f => !f.parentId);
+  const rootRequests = collectionRequests.filter(r => !r.folderId);
+
+  const rootItems: any[] = [];
+  for (const folder of rootFolders) {
+    const folderEvents = buildPostmanEvents(folder.preRequestScript, folder.testScript);
+    const folderItem: any = {
+      name: folder.name,
+      item: buildFolderItems(folder.id),
+    };
+    if (folder.auth) folderItem.auth = buildPostmanAuth(folder.auth);
+    if (folderEvents.length > 0) folderItem.event = folderEvents;
+    rootItems.push(folderItem);
+  }
+  for (const r of rootRequests) {
+    const events = buildPostmanEvents(r.preRequestScript, r.testScript);
+    const reqItem: any = {
+      name: r.name,
+      request: buildPostmanRequest(r),
+      response: buildPostmanResponses(r),
+    };
+    if (events.length > 0) reqItem.event = events;
+    rootItems.push(reqItem);
+  }
+
+  const postmanCollection: any = {
+    info: {
+      name: collection.name,
+      description: collection.description || '',
+      schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
+    },
+    item: rootItems,
+  };
+
+  if (collection.auth) {
+    const auth = buildPostmanAuth(collection.auth);
+    if (auth) postmanCollection.auth = auth;
+  }
+
+  if (collection.variables && collection.variables.length > 0) {
+    postmanCollection.variable = collection.variables.map(v => ({
+      key: v.key,
+      value: v.value,
+      type: v.type === 'secret' ? 'secret' : 'string',
+    }));
+  }
+
+  const collectionEvents = buildPostmanEvents(collection.preRequestScript, collection.testScript);
+  if (collectionEvents.length > 0) postmanCollection.event = collectionEvents;
+
+  return JSON.stringify(postmanCollection, null, 2);
+}
+
+export function exportAsUSB(
+  collection: Collection,
+  requests: ApiRequest[]
+): string {
+  const collectionRequests = requests.filter(r => r.collectionId === collection.id);
+  const data = {
+    format: 'usbx-api-client',
     version: '1.0',
-    exportedAt: new Date().toISOString(),
     collection: {
       name: collection.name,
-      description: collection.description,
+      description: collection.description || '',
+      auth: collection.auth,
+      variables: collection.variables,
+      folders: collection.folders,
+      preRequestScript: collection.preRequestScript,
+      testScript: collection.testScript,
     },
     requests: collectionRequests.map(r => ({
       name: r.name,
@@ -384,13 +608,100 @@ export function exportCollection(
       url: r.url,
       headers: r.headers,
       queryParams: r.queryParams,
+      pathVariables: r.pathVariables,
       body: r.body,
       bodyType: r.bodyType,
+      bodyUrlEncoded: r.bodyUrlEncoded,
+      bodyFormData: r.bodyFormData,
       auth: r.auth,
+      description: r.description,
+      folderId: r.folderId,
+      preRequestScript: r.preRequestScript,
+      testScript: r.testScript,
+      examples: r.examples,
     })),
   };
+  return JSON.stringify(data, null, 2);
+}
 
-  return JSON.stringify(exportData, null, 2);
+export function exportAsBruno(
+  collection: Collection,
+  requests: ApiRequest[]
+): string {
+  const collectionRequests = requests.filter(r => r.collectionId === collection.id);
+
+  function buildBruRequest(r: ApiRequest): any {
+    const item: any = {
+      name: r.name,
+      method: r.method,
+      url: r.url,
+      headers: r.headers.filter(h => h.key && h.enabled).map(h => ({ name: h.key, value: h.value })),
+      params: r.queryParams.filter(p => p.key && p.enabled).map(p => ({ name: p.key, value: p.value })),
+    };
+
+    if (r.auth && r.auth.type !== 'none' && r.auth.type !== 'inherit') {
+      if (r.auth.type === 'bearer') {
+        item.auth = { mode: 'bearer', bearer: r.auth.bearer?.token || '' };
+      } else if (r.auth.type === 'basic') {
+        item.auth = { mode: 'basic', basic: { username: r.auth.basic?.username || '', password: r.auth.basic?.password || '' } };
+      } else if (r.auth.type === 'api-key') {
+        item.auth = { mode: 'api-key', apikey: { key: r.auth.apiKey?.key || '', value: r.auth.apiKey?.value || '' } };
+      }
+    }
+
+    if (r.bodyType === 'json') {
+      item.body = { mode: 'json', json: r.body };
+    } else if (r.bodyType === 'raw') {
+      item.body = { mode: 'text', text: r.body };
+    } else if (r.bodyType === 'x-www-form-urlencoded') {
+      item.body = { mode: 'urlencoded', urlencoded: (r.bodyUrlEncoded || []).filter(p => p.key).map(p => ({ name: p.key, value: p.value, enabled: p.enabled })) };
+    } else if (r.bodyType === 'form-data') {
+      item.body = { mode: 'multipart', multipart: (r.bodyFormData || []).filter(f => f.key).map(f => ({ name: f.key, value: f.value, type: f.type || 'text', enabled: f.enabled })) };
+    }
+
+    if (r.preRequestScript?.trim()) item.script = { pre: r.preRequestScript };
+    if (r.testScript?.trim()) item.tests = r.testScript;
+
+    return item;
+  }
+
+  function buildBruFolder(folderId: string): any {
+    const folder = collection.folders.find(f => f.id === folderId)!;
+    const childFolders = collection.folders.filter(f => f.parentId === folderId);
+    const folderReqs = collectionRequests.filter(r => r.folderId === folderId);
+
+    return {
+      name: folder.name,
+      items: [
+        ...childFolders.map(f => buildBruFolder(f.id)),
+        ...folderReqs.map(r => buildBruRequest(r)),
+      ],
+    };
+  }
+
+  const rootFolders = collection.folders.filter(f => !f.parentId);
+  const rootRequests = collectionRequests.filter(r => !r.folderId);
+
+  const brunoCollection: any = {
+    name: collection.name,
+    version: '1',
+    type: 'collection',
+  };
+
+  if (collection.auth && collection.auth.type !== 'none') {
+    if (collection.auth.type === 'bearer') {
+      brunoCollection.auth = { mode: 'bearer', bearer: collection.auth.bearer?.token || '' };
+    } else if (collection.auth.type === 'basic') {
+      brunoCollection.auth = { mode: 'basic', basic: { username: collection.auth.basic?.username || '', password: collection.auth.basic?.password || '' } };
+    }
+  }
+
+  brunoCollection.items = [
+    ...rootFolders.map(f => buildBruFolder(f.id)),
+    ...rootRequests.map(r => buildBruRequest(r)),
+  ];
+
+  return JSON.stringify(brunoCollection, null, 2);
 }
 
 export function importUSBCollection(json: string): {

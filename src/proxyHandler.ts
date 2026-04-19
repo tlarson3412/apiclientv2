@@ -1,10 +1,42 @@
-import type { Express, Request, Response } from "express";
-import { createServer, type Server } from "http";
-import http from "http";
-import https from "https";
-import crypto from "crypto";
-import { storage } from "./storage";
-import { insertComponentSchema } from "@shared/schema";
+import * as http from 'http';
+import * as https from 'https';
+import * as crypto from 'crypto';
+
+interface ProxyRequest {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body?: string;
+  digestAuth?: { username: string; password: string };
+  clientCert?: {
+    certPem?: string;
+    keyPem?: string;
+    caPem?: string;
+    passphrase?: string;
+  };
+  binaryBase64?: boolean;
+  timeout?: number;
+  followRedirects?: boolean;
+}
+
+interface TimingResult {
+  dns: number;
+  connect: number;
+  tls: number;
+  ttfb: number;
+  download: number;
+  total: number;
+}
+
+interface ProxyResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  setCookies: string[];
+  body: string;
+  time: number;
+  timing: TimingResult;
+}
 
 function makeTimedRequest(
   targetUrl: string,
@@ -22,11 +54,11 @@ function makeTimedRequest(
   headers: Record<string, string>;
   setCookies: string[];
   body: string;
-  timing: { dns: number; connect: number; tls: number; ttfb: number; download: number; total: number };
+  timing: TimingResult;
 }> {
   return new Promise((resolve, reject) => {
     const parsedUrl = new URL(targetUrl);
-    const isHttps = parsedUrl.protocol === "https:";
+    const isHttps = parsedUrl.protocol === 'https:';
     const transport = isHttps ? https : http;
 
     const timing = {
@@ -44,7 +76,7 @@ function makeTimedRequest(
       hostname: parsedUrl.hostname,
       port: parsedUrl.port || (isHttps ? 443 : 80),
       path: parsedUrl.pathname + parsedUrl.search,
-      method: options.method || "GET",
+      method: options.method || 'GET',
       headers: options.headers || {},
     };
 
@@ -60,11 +92,11 @@ function makeTimedRequest(
       timing.firstByte = performance.now();
 
       const chunks: Buffer[] = [];
-      res.on("data", (chunk: Buffer) => {
+      res.on('data', (chunk: Buffer) => {
         chunks.push(chunk);
       });
 
-      res.on("end", () => {
+      res.on('end', () => {
         timing.end = performance.now();
 
         const responseHeaders: Record<string, string> = {};
@@ -79,11 +111,11 @@ function makeTimedRequest(
                 setCookieHeaders.push(value);
               }
             }
-            responseHeaders[key] = Array.isArray(value) ? value.join(", ") : value;
+            responseHeaders[key] = Array.isArray(value) ? value.join(', ') : value;
           }
         }
 
-        const body = Buffer.concat(chunks).toString("utf-8");
+        const body = Buffer.concat(chunks).toString('utf-8');
 
         const dnsTime = Math.max(0, Math.round(timing.dnsEnd - timing.start));
         const connectTime = Math.max(0, Math.round(timing.connectEnd - (timing.dnsEnd || timing.start)));
@@ -94,7 +126,7 @@ function makeTimedRequest(
 
         resolve({
           status: res.statusCode || 0,
-          statusText: res.statusMessage || "",
+          statusText: res.statusMessage || '',
           headers: responseHeaders,
           setCookies: setCookieHeaders,
           body,
@@ -110,19 +142,19 @@ function makeTimedRequest(
       });
     });
 
-    req.on("socket", (socket) => {
-      socket.on("lookup", () => {
+    req.on('socket', (socket) => {
+      socket.on('lookup', () => {
         timing.dnsEnd = performance.now();
       });
-      socket.on("connect", () => {
+      socket.on('connect', () => {
         timing.connectEnd = performance.now();
       });
-      socket.on("secureConnect", () => {
+      socket.on('secureConnect', () => {
         timing.tlsEnd = performance.now();
       });
     });
 
-    req.on("error", (err) => {
+    req.on('error', (err) => {
       reject(err);
     });
 
@@ -132,7 +164,7 @@ function makeTimedRequest(
       reject(new Error(`Request timed out after ${timeoutMs}ms`));
     });
 
-    if (!["GET", "HEAD", "OPTIONS"].includes(options.method)) {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(options.method)) {
       if (options.binaryBody) {
         req.write(options.binaryBody);
       } else if (options.body) {
@@ -208,143 +240,82 @@ function computeDigestAuth(
   return authHeader;
 }
 
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express
-): Promise<Server> {
-  app.post("/api/proxy", async (req: Request, res: Response) => {
-    try {
-      const { method, url, headers, body, digestAuth, clientCert, binaryBase64, timeout, followRedirects } = req.body;
+export async function executeProxy(payload: ProxyRequest): Promise<ProxyResponse> {
+  const { method, url, headers, body, digestAuth, clientCert, binaryBase64, timeout } = payload;
 
-      if (!url) {
-        return res.status(400).json({ error: "URL is required" });
-      }
+  if (!url) {
+    throw new Error('URL is required');
+  }
 
-      let agent: https.Agent | undefined;
-      const parsedUrl = new URL(url);
-      const isHttps = parsedUrl.protocol === "https:";
+  let agent: https.Agent | undefined;
+  const parsedUrl = new URL(url);
+  const isHttps = parsedUrl.protocol === 'https:';
 
-      if (clientCert && isHttps) {
-        const agentOptions: https.AgentOptions = {
-          rejectUnauthorized: true,
-        };
-        if (clientCert.certPem) agentOptions.cert = clientCert.certPem;
-        if (clientCert.keyPem) agentOptions.key = clientCert.keyPem;
-        if (clientCert.caPem) agentOptions.ca = clientCert.caPem;
-        if (clientCert.passphrase) agentOptions.passphrase = clientCert.passphrase;
-        agent = new https.Agent(agentOptions);
-      }
+  if (clientCert && isHttps) {
+    const agentOptions: https.AgentOptions = {
+      rejectUnauthorized: true,
+    };
+    if (clientCert.certPem) { agentOptions.cert = clientCert.certPem; }
+    if (clientCert.keyPem) { agentOptions.key = clientCert.keyPem; }
+    if (clientCert.caPem) { agentOptions.ca = clientCert.caPem; }
+    if (clientCert.passphrase) { agentOptions.passphrase = clientCert.passphrase; }
+    agent = new https.Agent(agentOptions);
+  }
 
-      let requestBody = body;
-      let binaryBuffer: Buffer | undefined;
-      if (binaryBase64 && body) {
-        binaryBuffer = Buffer.from(body, 'base64');
-        requestBody = undefined;
-      }
+  let requestBody = body;
+  let binaryBuffer: Buffer | undefined;
+  if (binaryBase64 && body) {
+    binaryBuffer = Buffer.from(body, 'base64');
+    requestBody = undefined;
+  }
 
-      let result = await makeTimedRequest(url, {
-        method: method || "GET",
-        headers: headers || {},
+  let result = await makeTimedRequest(url, {
+    method: method || 'GET',
+    headers: headers || {},
+    body: requestBody,
+    binaryBody: binaryBuffer,
+    agent,
+    timeout: timeout || undefined,
+  });
+
+  if (digestAuth && result.status === 401) {
+    const wwwAuth = result.headers['www-authenticate'] || '';
+    if (wwwAuth.toLowerCase().startsWith('digest')) {
+      const challenge = parseDigestChallenge(wwwAuth);
+      const uri = parsedUrl.pathname + parsedUrl.search;
+      const authHeader = computeDigestAuth(
+        method || 'GET',
+        uri,
+        digestAuth.username,
+        digestAuth.password,
+        challenge,
+        1
+      );
+
+      const retryHeaders = { ...(headers || {}), Authorization: authHeader };
+
+      result = await makeTimedRequest(url, {
+        method: method || 'GET',
+        headers: retryHeaders,
         body: requestBody,
         binaryBody: binaryBuffer,
         agent,
         timeout: timeout || undefined,
       });
-
-      if (digestAuth && result.status === 401) {
-        const wwwAuth = result.headers['www-authenticate'] || '';
-        if (wwwAuth.toLowerCase().startsWith('digest')) {
-          const challenge = parseDigestChallenge(wwwAuth);
-          const uri = parsedUrl.pathname + parsedUrl.search;
-          const authHeader = computeDigestAuth(
-            method || 'GET',
-            uri,
-            digestAuth.username,
-            digestAuth.password,
-            challenge,
-            1
-          );
-
-          const retryHeaders = { ...(headers || {}), Authorization: authHeader };
-
-          result = await makeTimedRequest(url, {
-            method: method || "GET",
-            headers: retryHeaders,
-            body: requestBody,
-            binaryBody: binaryBuffer,
-            agent,
-            timeout: timeout || undefined,
-          });
-        }
-      }
-
-      if (agent) {
-        agent.destroy();
-      }
-
-      res.json({
-        status: result.status,
-        statusText: result.statusText,
-        headers: result.headers,
-        setCookies: result.setCookies,
-        body: result.body,
-        time: result.timing.total,
-        timing: result.timing,
-      });
-    } catch (error: any) {
-      res.status(500).json({
-        status: 0,
-        statusText: "Error",
-        headers: {},
-        body: error.message || "Failed to execute request",
-        time: 0,
-        timing: { dns: 0, connect: 0, tls: 0, ttfb: 0, download: 0, total: 0 },
-      });
     }
-  });
+  }
 
-  app.get("/api/components", async (_req, res) => {
-    const components = await storage.getAllComponents();
-    res.json(components);
-  });
+  if (agent) {
+    agent.destroy();
+  }
 
-  app.get("/api/components/:id", async (req, res) => {
-    const component = await storage.getComponent(req.params.id);
-    if (!component) {
-      return res.status(404).json({ error: "Component not found" });
-    }
-    res.json(component);
-  });
-
-  app.post("/api/components", async (req, res) => {
-    const result = insertComponentSchema.safeParse(req.body);
-    if (!result.success) {
-      return res.status(400).json({ error: result.error.message });
-    }
-    const component = await storage.createComponent(result.data);
-    res.status(201).json(component);
-  });
-
-  app.patch("/api/components/:id", async (req, res) => {
-    const partialSchema = insertComponentSchema.partial();
-    const result = partialSchema.safeParse(req.body);
-    if (!result.success) {
-      return res.status(400).json({ error: result.error.message });
-    }
-    const component = await storage.updateComponent(req.params.id, result.data);
-    if (!component) {
-      return res.status(404).json({ error: "Component not found" });
-    }
-    res.json(component);
-  });
-
-  app.delete("/api/components/:id", async (req, res) => {
-    const deleted = await storage.deleteComponent(req.params.id);
-    if (!deleted) {
-      return res.status(404).json({ error: "Component not found" });
-    }
-    res.status(204).send();
-  });
-
-  return httpServer;
+  return {
+    status: result.status,
+    statusText: result.statusText,
+    headers: result.headers,
+    setCookies: result.setCookies,
+    body: result.body,
+    time: result.timing.total,
+    timing: result.timing,
+  };
 }

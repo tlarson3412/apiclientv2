@@ -1,4 +1,5 @@
 import type { ApiRequest, ApiResponse, TestResult } from '../types';
+import { vscodeClient } from '../lib/vscodeApi';
 
 export interface PmScriptResult {
   success: boolean;
@@ -298,13 +299,7 @@ async function proxySendRequest(reqSpec: any): Promise<{ error: any; response: a
       }
     }
 
-    const proxyResponse = await fetch('/api/proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ method, url, headers, body }),
-    });
-
-    const data = await proxyResponse.json();
+    const data = await vscodeClient.executeProxy({ method, url, headers, body }) as any;
 
     let responseBody = '';
     if (typeof data.body === 'string') {

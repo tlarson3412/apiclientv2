@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useStore } from '@/store/useStore';
 import { Typography } from '@/components/ui/typography';
-import { Copy, Download, Check, Clock, HardDrive, Search, X, WrapText, Link2, Save, ChevronDown, MoreHorizontal, Filter, ChevronUp } from 'lucide-react';
+import { Copy, Download, Check, Clock, HardDrive, Search, X, WrapText, Save, ChevronDown, ChevronUp } from 'lucide-react';
 import usBankLogo from '@/assets/US-Bank-Logo.png';
 import { cn } from '@/lib/utils';
 // @ts-ignore
@@ -187,8 +187,20 @@ export function ResponseViewer() {
     );
   }
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(response.body);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(response.body);
+    } catch {
+      // Fallback: use execCommand
+      const ta = document.createElement('textarea');
+      ta.value = response.body;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -234,6 +246,7 @@ export function ResponseViewer() {
     { id: 'headers', label: 'Headers', badge: String(headerCount) },
     ...(totalTests > 0 ? [{ id: 'test-results' as ResponseTab, label: 'Test Results', badge: `${passCount}/${totalTests}`, badgeColor: passCount === totalTests ? 'text-status-success-mid' : 'text-status-danger-mid' }] : []),
     { id: 'timeline', label: 'Timeline' },
+    { id: 'code', label: 'Code' },
   ];
 
   return (
@@ -309,9 +322,6 @@ export function ResponseViewer() {
               </>
             )}
           </div>
-          <button className="text-label-muted hover:text-label-mid">
-            <MoreHorizontal className="w-4 h-4" />
-          </button>
         </div>
       </div>
 
@@ -319,11 +329,6 @@ export function ResponseViewer() {
         <>
           <div className="flex items-center justify-between px-2 py-1.5 border-b border-utility-subdued bg-surface-alternate-muted">
             <div className="flex items-center gap-1">
-              <button className="flex items-center gap-1 px-2 py-1 text-[12px] font-medium text-label-mid hover:bg-utility-muted rounded transition-colors">
-                <span className="font-mono">{'{}'}</span> {bodyFormat}
-                <ChevronDown className="w-3 h-3 text-label-muted" />
-              </button>
-              <div className="w-px h-4 bg-utility-subdued mx-1" />
               <button
                 onClick={() => setActiveTab('visualize')}
                 className="flex items-center gap-1 px-2 py-1 text-[12px] text-label-muted hover:text-label-mid hover:bg-utility-muted rounded transition-colors"

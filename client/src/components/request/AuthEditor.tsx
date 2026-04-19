@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '@/store/useStore';
+import { vscodeClient } from '@/lib/vscodeApi';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TextInput } from '@/components/ui/text-input';
 import { Typography } from '@/components/ui/typography';
@@ -244,18 +245,12 @@ export function AuthEditor() {
         params.append('password', interpolateVariables(oauth2.password || ''));
       }
 
-      const response = await fetch('/api/proxy', {
+      const data = await vscodeClient.executeProxy({
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          method: 'POST',
-          url: tokenUrl,
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: params.toString(),
-        }),
-      });
-
-      const data = await response.json();
+        url: tokenUrl,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      }) as any;
       if (data.status >= 400) {
         let errMsg = `HTTP ${data.status}`;
         try {

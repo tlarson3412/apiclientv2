@@ -17,6 +17,7 @@ import { html } from '@codemirror/lang-html';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { GraphQLEditor } from './GraphQLEditor';
 import { cn } from '@/lib/utils';
+import { vscodeClient } from '@/lib/vscodeApi';
 
 const BODY_MODES: { value: BodyType; label: string }[] = [
   { value: 'none', label: 'none' },
@@ -187,18 +188,21 @@ function FormDataEditor({
     onChange(entries.filter(e => e.id !== id));
   };
 
-  const handleFileSelect = (id: string, file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(',')[1];
-      updateEntry(id, {
-        fileName: file.name,
-        fileContentBase64: base64,
-        contentType: file.type || 'application/octet-stream',
-        value: file.name,
-      });
-    };
-    reader.readAsDataURL(file);
+  const handleFileSelect = async (id: string) => {
+    try {
+      const result = await vscodeClient.openFileBinaryDialog();
+      if (result) {
+        const fileName = result.path.split(/[\\/]/).pop() || 'file';
+        updateEntry(id, {
+          fileName,
+          fileContentBase64: result.content,
+          contentType: 'application/octet-stream',
+          value: fileName,
+        });
+      }
+    } catch (err) {
+      console.error('File select failed:', err);
+    }
   };
 
   const inputClass = "h-8 px-2 text-[13px] bg-transparent border-b border-utility-subdued text-label-vivid placeholder:text-label-muted focus:outline-none focus:border-standard-subdued font-mono";
@@ -247,18 +251,13 @@ function FormDataEditor({
             />
           ) : (
             <div className="flex items-center gap-2 h-8">
-              <label className="flex items-center gap-1.5 px-2 py-1 text-[12px] text-label-mid border border-utility-subdued rounded cursor-pointer hover:bg-utility-muted transition-colors">
+              <button
+                onClick={() => handleFileSelect(entry.id)}
+                className="flex items-center gap-1.5 px-2 py-1 text-[12px] text-label-mid border border-utility-subdued rounded cursor-pointer hover:bg-utility-muted transition-colors"
+              >
                 <Upload className="w-3 h-3" />
                 {entry.fileName || 'Choose file'}
-                <input
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFileSelect(entry.id, file);
-                  }}
-                />
-              </label>
+              </button>
             </div>
           )}
           <button
@@ -290,40 +289,38 @@ function BinaryEditor({
 
   const fileEntry = request.bodyFormData?.[0];
 
-  const handleFileSelect = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(',')[1];
-      updateRequest(request.id, {
-        bodyFormData: [{
-          id: uuidv4(),
-          key: 'file',
-          value: file.name,
-          type: 'file',
-          fileName: file.name,
-          fileContentBase64: base64,
-          contentType: file.type || 'application/octet-stream',
-          enabled: true,
-        }],
-      });
-    };
-    reader.readAsDataURL(file);
+  const handleFileSelect = async () => {
+    try {
+      const result = await vscodeClient.openFileBinaryDialog();
+      if (result) {
+        const fileName = result.path.split(/[\\/]/).pop() || 'file';
+        updateRequest(request.id, {
+          bodyFormData: [{
+            id: uuidv4(),
+            key: 'file',
+            value: fileName,
+            type: 'file',
+            fileName,
+            fileContentBase64: result.content,
+            contentType: 'application/octet-stream',
+            enabled: true,
+          }],
+        });
+      }
+    } catch (err) {
+      console.error('File select failed:', err);
+    }
   };
 
   return (
     <div className="flex flex-col items-center gap-3 py-6">
-      <label className="flex items-center gap-2 px-4 py-2 text-[13px] text-label-mid border border-utility-subdued rounded cursor-pointer hover:bg-utility-muted transition-colors">
+      <button
+        onClick={handleFileSelect}
+        className="flex items-center gap-2 px-4 py-2 text-[13px] text-label-mid border border-utility-subdued rounded cursor-pointer hover:bg-utility-muted transition-colors"
+      >
         <Upload className="w-4 h-4" />
         {fileEntry?.fileName || 'Select file'}
-        <input
-          type="file"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleFileSelect(file);
-          }}
-        />
-      </label>
+      </button>
       {fileEntry?.fileName && (
         <Typography variant="caption" className="text-label-muted">
           {fileEntry.fileName} ({fileEntry.contentType})

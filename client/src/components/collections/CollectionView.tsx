@@ -609,8 +609,11 @@ export function CollectionView({ collectionId, folderId }: CollectionViewProps) 
   const setCollectionAuth = useStore(s => s.setCollectionAuth);
   const setFolderAuth = useStore(s => s.setFolderAuth);
   const updateCollectionStore = useStore(s => s.updateCollection);
+  const renameFolderInCollection = useStore(s => s.renameFolderInCollection);
   const { updateCollection, updateFolder } = useCollections();
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('overview');
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState('');
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -698,10 +701,46 @@ export function CollectionView({ collectionId, folderId }: CollectionViewProps) 
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-6 pt-5 pb-0">
-        <Typography variant="heading-small" className="text-label-vivid text-lg">
-          {displayName}
-        </Typography>
+      <div className="px-6 pt-5 pb-0 flex items-center gap-2 group">
+        {editingName ? (
+          <input
+            value={nameValue}
+            onChange={e => setNameValue(e.target.value)}
+            onBlur={() => {
+              const trimmed = nameValue.trim();
+              if (trimmed && trimmed !== displayName) {
+                if (folderId) {
+                  renameFolderInCollection(collectionId, folderId, trimmed);
+                } else {
+                  updateCollectionStore(collectionId, { name: trimmed });
+                  debouncedSave(() => updateCollection(collectionId, { name: trimmed }));
+                }
+              }
+              setEditingName(false);
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                (e.target as HTMLInputElement).blur();
+              }
+              if (e.key === 'Escape') setEditingName(false);
+            }}
+            className="text-lg font-semibold text-label-vivid bg-transparent border-b-2 border-standard-subdued focus:outline-none flex-1 min-w-0"
+            autoFocus
+          />
+        ) : (
+          <>
+            <Typography variant="heading-small" className="text-label-vivid text-lg">
+              {displayName}
+            </Typography>
+            <button
+              onClick={() => { setNameValue(displayName); setEditingName(true); }}
+              className="p-1 rounded hover:bg-utility-muted transition-colors opacity-0 group-hover:opacity-100"
+              title={folderId ? "Rename folder" : "Rename collection"}
+            >
+              <Pencil className="w-3.5 h-3.5 text-label-muted" />
+            </button>
+          </>
+        )}
       </div>
 
       <div className="flex items-center gap-0 px-6 mt-4 border-b border-utility-subdued">

@@ -16,6 +16,7 @@ import {
   exportLoadTestResultsAsCSV,
 } from '@/utils/loadTestRunner';
 import type { LoadTestConfig, LoadTestIterationResult, LoadTestRunStats } from '@/types';
+import { vscodeClient } from '@/lib/vscodeApi';
 
 const METHOD_COLORS: Record<string, string> = {
   GET: 'text-status-success-mid',
@@ -65,24 +66,25 @@ export function LoadTestRunner({ requestId, open, onClose }: LoadTestRunnerProps
 
   const selectedRequest = requests.find(r => r.id === selectedRequestId);
 
-  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
+  const handleFileUpload = useCallback(async () => {
+    try {
+      const result = await vscodeClient.openFileDialog({
+        'Data Files': ['csv', 'json'],
+        'All Files': ['*'],
+      });
+      if (!result) return;
+      const name = result.path.split(/[\\/]/).pop() || 'file';
       try {
-        const content = ev.target?.result as string;
-        const parsed = parseDataFile(content, file.name);
+        const parsed = parseDataFile(result.content, name);
         setDataFile(parsed);
-        setFileName(file.name);
+        setFileName(name);
       } catch {
         setDataFile(null);
         setFileName('');
       }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
+    } catch (err) {
+      console.error('File upload failed:', err);
+    }
   }, []);
 
   const handleRun = useCallback(async () => {
@@ -168,18 +170,13 @@ export function LoadTestRunner({ requestId, open, onClose }: LoadTestRunnerProps
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[12px] text-label-muted font-medium">Data File (CSV or JSON)</label>
                   <div className="flex items-center gap-2">
-                    <label className="cursor-pointer">
-                      <input
-                        type="file"
-                        accept=".csv,.json"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                      />
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] border border-utility-subdued rounded text-label-vivid hover:bg-utility-muted transition-colors">
-                        <Upload className="w-3.5 h-3.5" />
-                        {fileName || 'Choose file...'}
-                      </span>
-                    </label>
+                    <button
+                      onClick={handleFileUpload}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] border border-utility-subdued rounded text-label-vivid hover:bg-utility-muted transition-colors cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      {fileName || 'Choose file...'}
+                    </button>
                     {dataFile && (
                       <span className="text-[12px] text-label-muted">
                         {dataFile.rows.length} row{dataFile.rows.length !== 1 ? 's' : ''} · {dataFile.columns.length} column{dataFile.columns.length !== 1 ? 's' : ''}

@@ -453,13 +453,21 @@ export const useStore = create<AppState>()(
         const state = get();
         let result = text;
 
+        // Also substitute extracted/global variables stored in state
+        const extracted = (state as any)._extractedVars as Record<string, string> | undefined;
+        if (extracted) {
+          Object.entries(extracted).forEach(([k, v]) => {
+            result = result.replace(new RegExp(`\\{\\{${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}\\}`, 'g'), v);
+          });
+        }
+
         if (collectionId) {
           const collection = state.collections.find(c => c.id === collectionId);
           if (collection?.variables) {
             collection.variables
               .filter(v => v.enabled)
               .forEach(v => {
-                result = result.replace(new RegExp(`\\{\\{${v.key}\\}\\}`, 'g'), v.value);
+                result = result.replace(new RegExp(`\\{\\{${v.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}\\}`, 'g'), v.value);
               });
           }
         }
@@ -469,8 +477,17 @@ export const useStore = create<AppState>()(
           env.variables
             .filter(v => v.enabled)
             .forEach(v => {
-              result = result.replace(new RegExp(`\\{\\{${v.key}\\}\\}`, 'g'), v.value);
+              result = result.replace(new RegExp(`\\{\\{${v.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}\\}`, 'g'), v.value);
             });
+        }
+
+        if (result !== text) {
+          console.log('[Interpolate] Resolved:', text, '→', result);
+        } else if (/\{\{.+?\}\}/.test(text)) {
+          console.log('[Interpolate] UNRESOLVED variables in:', text,
+            '| activeEnvId:', state.activeEnvironmentId,
+            '| envCount:', state.environments.length,
+            '| env vars:', env?.variables.map(v => v.key).join(',') || 'none');
         }
 
         return result;

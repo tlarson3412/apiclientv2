@@ -4,6 +4,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Send, Loader2, FlaskConical, Save, Pencil, Check, FolderOpen, ChevronRight, Cookie } from 'lucide-react';
 import { executeRequest } from '@/utils/httpClient';
+import { runAssertions } from '@/utils/testRunner';
+import { runExtractions } from '@/utils/extractionRunner';
 import type { HttpMethod } from '@/types';
 import { cn } from '@/lib/utils';
 import { LoadTestRunner } from '@/components/loadtest/LoadTestRunner';
@@ -59,8 +61,24 @@ export function UrlBar() {
     try {
       const interpolate = (text: string) => interpolateVariables(text, activeRequest.collectionId);
       const response = await executeRequest(activeRequest, interpolate);
-      setResponse(activeRequest.id, response);
-      addHistoryEntry(activeRequest, response);
+
+      const assertions = activeRequest.assertions || [];
+      const structuredResults = assertions.length > 0 ? runAssertions(response, assertions) : [];
+      const scriptResults = response.testResults || [];
+      const testResults = [...structuredResults, ...scriptResults];
+
+      const responseWithTests = { ...response, testResults: testResults.length > 0 ? testResults : undefined };
+      setResponse(activeRequest.id, responseWithTests);
+      addHistoryEntry(activeRequest, responseWithTests);
+
+      const extractions = activeRequest.extractions || [];
+      if (extractions.length > 0) {
+        const extractedVars = runExtractions(response, extractions);
+        const setExtractedVariable = useStore.getState().setExtractedVariable;
+        extractedVars.forEach(({ variableName, value }) => {
+          setExtractedVariable(variableName, value);
+        });
+      }
     } catch (err) {
       console.error('Request failed:', err);
     } finally {

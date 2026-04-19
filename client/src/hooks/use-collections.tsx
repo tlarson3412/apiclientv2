@@ -1,6 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useWorkspace } from "./use-workspace";
-import { apiRequest } from "@/lib/queryClient";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { vscodeClient } from "@/lib/vscodeApi";
 import type { Collection, ApiRequest, CollectionFolder } from "@/types";
 
 export interface WorkspaceCollection extends Collection {
@@ -8,94 +7,81 @@ export interface WorkspaceCollection extends Collection {
 }
 
 export function useCollections() {
-  const { activeWorkspace } = useWorkspace();
   const queryClient = useQueryClient();
-  const wsId = activeWorkspace?.id;
 
-  const collectionsKey = ["/api/workspaces", wsId, "collections"];
+  const collectionsKey = ["collections"];
 
   const { data: collections = [], isLoading } = useQuery<WorkspaceCollection[]>({
     queryKey: collectionsKey,
     queryFn: async () => {
-      if (!wsId) return [];
-      const res = await fetch(`/api/workspaces/${wsId}/collections`, {
-        credentials: "include",
-      });
-      if (!res.ok) return [];
-      return res.json();
+      const result = await vscodeClient.listCollections() as any[];
+      // Map stored collections to the shape the UI expects
+      return result.map(c => ({
+        ...c,
+        requests: c.requests || [],
+        folders: c.folders || [],
+      }));
     },
-    enabled: !!wsId,
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: collectionsKey });
 
   const addCollection = async (name: string) => {
-    if (!wsId) return;
-    await apiRequest("POST", `/api/workspaces/${wsId}/collections`, { name });
+    await vscodeClient.createCollection({ name });
     invalidate();
   };
 
   const updateCollection = async (colId: string, updates: Partial<Collection>) => {
-    if (!wsId) return;
-    await apiRequest("PATCH", `/api/workspaces/${wsId}/collections/${colId}`, updates);
+    await vscodeClient.updateCollection(colId, updates as Record<string, unknown>);
     invalidate();
   };
 
   const deleteCollection = async (colId: string) => {
-    if (!wsId) return;
-    await apiRequest("DELETE", `/api/workspaces/${wsId}/collections/${colId}`);
+    await vscodeClient.deleteCollection(colId);
     invalidate();
   };
 
   const addFolder = async (colId: string, name: string, parentId?: string) => {
-    if (!wsId) return;
-    await apiRequest("POST", `/api/workspaces/${wsId}/collections/${colId}/folders`, { name, parentId });
+    await vscodeClient.createFolder(colId, { name, parentId });
     invalidate();
   };
 
   const updateFolder = async (folderId: string, updates: Partial<CollectionFolder>) => {
-    if (!wsId) return;
-    await apiRequest("PATCH", `/api/workspaces/${wsId}/folders/${folderId}`, updates);
+    await vscodeClient.updateFolder(folderId, updates as Record<string, unknown>);
     invalidate();
   };
 
   const deleteFolder = async (folderId: string) => {
-    if (!wsId) return;
-    await apiRequest("DELETE", `/api/workspaces/${wsId}/folders/${folderId}`);
+    await vscodeClient.deleteFolder(folderId);
     invalidate();
   };
 
   const addRequest = async (colId: string, data: Partial<ApiRequest>) => {
-    if (!wsId) return;
-    const res = await apiRequest("POST", `/api/workspaces/${wsId}/collections/${colId}/requests`, data);
+    const result = await vscodeClient.createRequest(colId, data as Record<string, unknown>);
     invalidate();
-    return await res.json();
+    return result;
   };
 
   const updateRequest = async (reqId: string, updates: Partial<ApiRequest>) => {
-    if (!wsId) return;
-    await apiRequest("PATCH", `/api/workspaces/${wsId}/requests/${reqId}`, updates);
+    await vscodeClient.updateRequest(reqId, updates as Record<string, unknown>);
     invalidate();
   };
 
   const deleteRequest = async (reqId: string) => {
-    if (!wsId) return;
-    await apiRequest("DELETE", `/api/workspaces/${wsId}/requests/${reqId}`);
+    await vscodeClient.deleteRequest(reqId);
     invalidate();
   };
 
   const importCollections = async (importData: any[]) => {
-    if (!wsId) return;
-    await apiRequest("POST", `/api/workspaces/${wsId}/collections/import`, { collections: importData });
+    console.log('[useCollections] importCollections called, items:', importData.length);
+    const result = await vscodeClient.importCollections(importData);
+    console.log('[useCollections] importCollections result:', result);
     invalidate();
+    console.log('[useCollections] cache invalidated');
   };
 
-  const copyCollectionToWorkspace = async (collectionId: string, sourceWorkspaceId: number, targetWorkspaceId: number, name?: string) => {
-    await apiRequest("POST", `/api/workspaces/${targetWorkspaceId}/copy-collection`, {
-      sourceWorkspaceId,
-      collectionId,
-      name,
-    });
+  const copyCollection = async (collectionId: string, name?: string) => {
+    await vscodeClient.copyCollection(collectionId, name);
     invalidate();
   };
 
@@ -115,7 +101,7 @@ export function useCollections() {
     updateRequest,
     deleteRequest,
     importCollections,
-    copyCollectionToWorkspace,
+    copyCollection,
     invalidate,
   };
 }

@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useCollections } from "@/hooks/use-collections";
 import { useStore } from "@/store/useStore";
-import { useWorkspace } from "@/hooks/use-workspace";
 import type { EnvironmentVariable, AuthConfig, Collection, ApiRequest } from "@/types";
 
 export function CollectionSync() {
@@ -10,14 +9,14 @@ export function CollectionSync() {
     addCollection, updateCollection, deleteCollection,
     addFolder, updateFolder, deleteFolder,
     addRequest, updateRequest: updateApiRequest, deleteRequest,
-    importCollections, copyCollectionToWorkspace,
+    importCollections, copyCollection: copyCollectionFn,
   } = useCollections();
-  const { activeWorkspace } = useWorkspace();
-  const wsIdRef = useRef<number | null>(null);
+  const initialized = useRef(false);
   const originals = useRef<Record<string, Function>>({});
 
   useEffect(() => {
     if (isLoading) return;
+    console.log('[CollectionSync] Syncing collections from React Query to store, count:', collections.length);
 
     const storeCollections = collections.map(c => ({
       id: c.id,
@@ -40,17 +39,8 @@ export function CollectionSync() {
   }, [collections, requests, isLoading]);
 
   useEffect(() => {
-    const currentWsId = activeWorkspace?.id || null;
-
-    if (wsIdRef.current === currentWsId) return;
-
-    if (wsIdRef.current !== null) {
-      useStore.setState(originals.current as any);
-    }
-
-    wsIdRef.current = currentWsId;
-
-    if (!currentWsId) return;
+    if (initialized.current) return;
+    initialized.current = true;
 
     const state = useStore.getState();
     originals.current = {
@@ -185,6 +175,15 @@ export function CollectionSync() {
         updateFolder(folderId, { auth }).catch(console.error);
       },
       importCollection: (collection: Collection, reqs: ApiRequest[]) => {
+        console.log('[CollectionSync] importCollection called:', collection.name, reqs.length, 'requests');
+        // Optimistic local update so the collection shows immediately
+        useStore.setState(s => ({
+          collections: [...s.collections, collection],
+          requests: [...s.requests, ...reqs],
+        }));
+        console.log('[CollectionSync] Optimistic state updated, collections count:', useStore.getState().collections.length);
+
+        // Persist to extension host, then refetch to get the real IDs
         importCollections([{
           name: collection.name,
           description: collection.description,
@@ -195,7 +194,16 @@ export function CollectionSync() {
           testScript: collection.testScript,
           folders: collection.folders,
           requests: reqs,
-        }]).catch(console.error);
+        }]).then(() => {
+          console.log('[CollectionSync] importCollections resolved successfully');
+        }).catch((err) => {
+          console.error('[CollectionSync] importCollections FAILED:', err);
+          // Rollback optimistic update on failure
+          useStore.setState(s => ({
+            collections: s.collections.filter(c => c.id !== collection.id),
+            requests: s.requests.filter(r => !reqs.some(nr => nr.id === r.id)),
+          }));
+        });
       },
       moveRequestToFolder: (requestId: string, folderId?: string) => {
         const request = useStore.getState().requests.find(r => r.id === requestId);
@@ -237,19 +245,16 @@ export function CollectionSync() {
           (originals.current.togglePinRequest as Function)(requestId);
         }
       },
-      copyCollection: (collectionId: string, targetWorkspaceId?: number, name?: string) => {
-        const wsId = activeWorkspace?.id;
-        if (!wsId) return;
-        const targetWsId = targetWorkspaceId || wsId;
-        copyCollectionToWorkspace(collectionId, wsId, targetWsId, name).catch(console.error);
+      copyCollection: (collectionId: string, _targetWorkspaceId?: number, name?: string) => {
+        copyCollectionFn(collectionId, name).catch(console.error);
       },
     });
 
     return () => {
       useStore.setState(originals.current as any);
-      wsIdRef.current = null;
+      initialized.current = false;
     };
-  }, [activeWorkspace?.id, addCollection, updateCollection, deleteCollection, addFolder, updateFolder, deleteFolder, addRequest, updateApiRequest, deleteRequest, importCollections]);
+  }, [addCollection, updateCollection, deleteCollection, addFolder, updateFolder, deleteFolder, addRequest, updateApiRequest, deleteRequest, importCollections]);
 
   return null;
 }
