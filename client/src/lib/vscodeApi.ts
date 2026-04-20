@@ -166,4 +166,33 @@ export const vscodeClient = {
 
   saveFileDialog: (content: string, filters?: Record<string, string[]>, defaultName?: string) =>
     sendMessage<{ path: string } | null>('dialog:save', { data: { content, filters, defaultName } }),
+
+  // Script execution (runs in extension host, no CSP restrictions)
+  executeScript: (data: {
+    script: string;
+    request: {
+      id: string;
+      name: string;
+      method: string;
+      url: string;
+      interpolatedUrl: string;
+      headers: { key: string; value: string; enabled: boolean }[];
+      body: string;
+      bodyType?: string;
+      bodyUrlEncoded?: { key: string; value: string }[];
+      collectionId?: string;
+    };
+    response?: {
+      status: number;
+      statusText: string;
+      headers: Record<string, string>;
+      body: string;
+      time: number;
+      size: number;
+      contentType: string;
+    };
+    envVariables: Record<string, string>;
+    collectionVariables: Record<string, string>;
+    isTestScript: boolean;
+  }) => sendMessage('script:execute', { data }),
 };

@@ -84,7 +84,7 @@ export function RequestScriptsPanel({ requestId }: { requestId: string }) {
   const hasPreRequest = !!(activeRequest.preRequestScript && activeRequest.preRequestScript.trim());
   const hasPostResponse = !!(activeRequest.testScript && activeRequest.testScript.trim());
 
-  const handleTest = () => {
+  const handleTest = async () => {
     const storeState = useStore.getState();
     const env = storeState.environments.find(e => e.id === storeState.activeEnvironmentId);
     const envVars = env
@@ -110,7 +110,7 @@ export function RequestScriptsPanel({ requestId }: { requestId: string }) {
       contentType: 'application/json',
     } : undefined;
 
-    const result = runPmScript({
+    const result = await runPmScript({
       script,
       request: activeRequest,
       response: mockResponse,

@@ -78,7 +78,7 @@ function SelectDropdown({
         
         {options.length > 0 && (
           <PopoverContent 
-            className="w-[--radix-popover-trigger-width] p-0 border border-utility-subdued bg-surface rounded overflow-hidden shadow-[0px_4px_6px_-1px_rgba(0,0,0,0.12),0px_2px_4px_-1px_rgba(0,0,0,0.12)]"
+            className="w-[--radix-popover-trigger-width] p-0 border border-utility-subdued bg-surface rounded overflow-hidden shadow-md"
             align="start"
           >
             <div className="flex flex-col">

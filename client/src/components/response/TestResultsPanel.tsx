@@ -16,7 +16,7 @@ export function TestResultsPanel() {
   const assertions = activeRequest.assertions || [];
   const testResults = response?.testResults || [];
 
-  if (assertions.length === 0) {
+  if (assertions.length === 0 && testResults.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-8 gap-2">
         <AlertTriangle className="w-8 h-8 text-utility-mid" />
@@ -24,7 +24,7 @@ export function TestResultsPanel() {
           No test assertions defined for this request.
         </Typography>
         <Typography variant="caption" className="text-label-muted text-center">
-          Add assertions in the Tests tab of the request builder above.
+          Add assertions in the Tests tab of the request builder above, or use pm.test() in your scripts.
         </Typography>
       </div>
     );
@@ -68,8 +68,9 @@ export function TestResultsPanel() {
       <div className="flex flex-col gap-1">
         {testResults.map((result, idx) => {
           const assertion = assertions.find(a => a.id === result.assertionId);
+          const isScriptTest = result.assertionId?.startsWith('pm-test-');
           return (
-            <ResultRow key={idx} result={result} assertionLabel={assertion?.type || 'unknown'} />
+            <ResultRow key={idx} result={result} assertionLabel={assertion?.type || (isScriptTest ? 'script' : 'unknown')} />
           );
         })}
       </div>

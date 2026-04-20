@@ -27,11 +27,31 @@ async function build() {
     console.log('Extension host built.');
   }
 
-  // 2. Build the webview (Vite)
+  // 2. Build all webview targets (Vite)
   if (!watch) {
-    console.log('Building webview...');
-    execSync('npx vite build', { stdio: 'inherit' });
+    // Build the legacy full webview
+    console.log('Building webview (legacy)...');
+    execSync('npx vite build', {
+      stdio: 'inherit',
+      env: { ...process.env, BUILD_TARGET: 'webview' },
+    });
     console.log('Webview built.');
+
+    // Build the sidebar webview
+    console.log('Building sidebar...');
+    execSync('npx vite build', {
+      stdio: 'inherit',
+      env: { ...process.env, BUILD_TARGET: 'sidebar' },
+    });
+    console.log('Sidebar built.');
+
+    // Build the editor webview
+    console.log('Building editor...');
+    execSync('npx vite build', {
+      stdio: 'inherit',
+      env: { ...process.env, BUILD_TARGET: 'editor' },
+    });
+    console.log('Editor built.');
   }
 }
 

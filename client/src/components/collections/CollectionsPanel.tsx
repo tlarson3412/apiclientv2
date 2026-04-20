@@ -3,11 +3,12 @@ import { useStore } from '@/store/useStore';
 import { Button } from '@/components/ui/button';
 import { Typography } from '@/components/ui/typography';
 import { TextInput } from '@/components/ui/text-input';
-import { FolderOpen, FolderPlus, Plus, Trash2, ChevronRight, ChevronDown, File, Upload, Download, Play, Pencil, ArrowRight, Star, Search, Copy, FileText } from 'lucide-react';
+import { FolderOpen, FolderPlus, Plus, Trash2, ChevronRight, ChevronDown, File, Upload, Download, Play, Pencil, ArrowRight, Star, Search, Copy, FileText, FlaskConical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { importPostmanCollection, importUSBCollection, exportCollection, exportAsUSB, exportAsBruno, downloadFile } from '@/utils/importExport';
 import { parseOpenApiSpec } from '@/utils/openApiImport';
 import { CollectionRunner } from './CollectionRunner';
+import { LoadTestRunner } from '@/components/loadtest/LoadTestRunner';
 import { vscodeClient } from '@/lib/vscodeApi';
 import type { Collection, CollectionFolder, ApiRequest } from '@/types';
 
@@ -56,6 +57,7 @@ function RequestTreeItem({
 
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState(req.name);
+  const [showLoadTest, setShowLoadTest] = useState(false);
 
   const examples = req.examples || [];
   const hasExamples = examples.length > 0;
@@ -132,6 +134,13 @@ function RequestTreeItem({
         )}
         <button
           className="p-0.5 rounded hover:bg-utility-muted transition-colors opacity-0 group-hover:opacity-100 ml-auto"
+          onClick={(e) => { e.stopPropagation(); setShowLoadTest(true); }}
+          title="Load Test"
+        >
+          <FlaskConical className="w-3 h-3 text-label-muted" />
+        </button>
+        <button
+          className="p-0.5 rounded hover:bg-utility-muted transition-colors opacity-0 group-hover:opacity-100"
           onClick={(e) => { e.stopPropagation(); duplicateRequest(req.id); }}
           title="Duplicate request"
         >
@@ -145,6 +154,12 @@ function RequestTreeItem({
           <Trash2 className="w-3 h-3 text-status-danger-mid" />
         </button>
       </div>
+
+      <LoadTestRunner
+        requestId={req.id}
+        open={showLoadTest}
+        onClose={() => setShowLoadTest(false)}
+      />
 
       {hasExamples && isExpanded && (
         <div>

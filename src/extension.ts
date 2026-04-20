@@ -2,15 +2,70 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { LocalStorageService } from './localStorageService';
+import { StateManager } from './stateManager';
+import { SidebarProvider } from './sidebarProvider';
+import { EditorManager } from './editorProvider';
 import { executeProxy } from './proxyHandler';
 import type { WebviewToExtensionMessage } from './messageProtocol';
 
 let panel: vscode.WebviewPanel | undefined;
+let stateManager: StateManager;
+let editorManager: EditorManager;
 
 export function activate(context: vscode.ExtensionContext) {
   const storagePath = context.globalStorageUri.fsPath;
   const storageService = new LocalStorageService(storagePath);
 
+  // Initialize the central state manager
+  stateManager = new StateManager(storageService, storagePath);
+  stateManager.initialize().catch(err => {
+    console.error('[USBX] Failed to initialize state manager:', err);
+  });
+
+  // Initialize the editor panel manager
+  editorManager = new EditorManager(
+    context.extensionPath,
+    stateManager,
+    context.subscriptions,
+  );
+
+  // Register the sidebar webview provider
+  const sidebarProvider = new SidebarProvider(
+    context.extensionUri,
+    context.extensionPath,
+    stateManager,
+    // Callbacks for UI actions from sidebar
+    (requestId, data) => editorManager.openRequest(requestId, data),
+    (collectionId, data) => editorManager.openCollection(collectionId, data),
+    (collectionId, folderId, data) => editorManager.openFolder(collectionId, folderId, data),
+    () => editorManager.openSettings(),
+  );
+
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      SidebarProvider.viewType,
+      sidebarProvider,
+      { webviewOptions: { retainContextWhenHidden: true } },
+    ),
+  );
+
+  // Register command: New Request (opens a blank editor panel)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('usbx-api-client.newRequest', () => {
+      const id = require('crypto').randomUUID();
+      editorManager.openRequest(id, { name: 'Untitled Request', method: 'GET', url: '' });
+    }),
+  );
+
+  // Register command: Open Settings
+  context.subscriptions.push(
+    vscode.commands.registerCommand('usbx-api-client.openSettings', () => {
+      editorManager.openSettings();
+    }),
+  );
+
+  // Keep the legacy "open" command for backward compatibility
+  // Opens the full webview panel (will be deprecated)
   const openCommand = vscode.commands.registerCommand('usbx-api-client.open', () => {
     if (panel) {
       panel.reveal(vscode.ViewColumn.One);
@@ -66,7 +121,10 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(openCommand);
 }
 
-export function deactivate() {
+export async function deactivate() {
+  if (stateManager) {
+    await stateManager.dispose();
+  }
   if (panel) {
     panel.dispose();
   }

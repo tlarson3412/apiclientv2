@@ -56,7 +56,7 @@ export function PreRequestScriptEditor() {
 
   if (!activeRequest) return null;
 
-  const handleTest = () => {
+  const handleTest = async () => {
     const storeState = useStore.getState();
     const env = storeState.environments.find(e => e.id === storeState.activeEnvironmentId);
     const envVars = env
@@ -69,7 +69,7 @@ export function PreRequestScriptEditor() {
       ? Object.fromEntries(col.variables.filter(v => v.enabled).map(v => [v.key, v.value]))
       : {};
 
-    const result = runPmScript({
+    const result = await runPmScript({
       script: activeRequest.preRequestScript || '',
       request: activeRequest,
       envVariables: envVars,

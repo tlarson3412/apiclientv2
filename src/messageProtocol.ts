@@ -113,6 +113,49 @@ export interface FileDialogRequest {
   };
 }
 
+// ---- State sync messages (new protocol v2) ----
+
+export interface StateGetRequest {
+  type: 'state:get';
+  requestId: string;
+}
+
+export interface StateSetRequest {
+  type: 'state:set';
+  requestId: string;
+  slice: string;
+  data: unknown;
+}
+
+// ---- UI action messages (cross-webview communication) ----
+
+export interface OpenRequestAction {
+  type: 'ui:openRequest';
+  requestId: string;
+  targetRequestId: string;
+  data?: Record<string, unknown>;
+}
+
+export interface OpenCollectionAction {
+  type: 'ui:openCollection';
+  requestId: string;
+  collectionId: string;
+  data?: Record<string, unknown>;
+}
+
+export interface OpenFolderAction {
+  type: 'ui:openFolder';
+  requestId: string;
+  collectionId: string;
+  folderId: string;
+  data?: Record<string, unknown>;
+}
+
+export interface OpenSettingsAction {
+  type: 'ui:openSettings';
+  requestId: string;
+}
+
 export type WebviewToExtensionMessage =
   | CollectionsListRequest
   | CollectionCreateRequest
@@ -127,7 +170,13 @@ export type WebviewToExtensionMessage =
   | ImportCollectionsRequest
   | CopyCollectionRequest
   | ProxyExecuteRequest
-  | FileDialogRequest;
+  | FileDialogRequest
+  | StateGetRequest
+  | StateSetRequest
+  | OpenRequestAction
+  | OpenCollectionAction
+  | OpenFolderAction
+  | OpenSettingsAction;
 
 // ---- Response messages (extension host -> webview) ----
 
@@ -145,4 +194,12 @@ export interface ErrorResponse {
   error: string;
 }
 
-export type ExtensionToWebviewMessage = SuccessResponse | ErrorResponse;
+// ---- Broadcast messages (extension host -> all webviews) ----
+
+export interface StateUpdateBroadcast {
+  type: 'state:update';
+  slice: string;
+  data: unknown;
+}
+
+export type ExtensionToWebviewMessage = SuccessResponse | ErrorResponse | StateUpdateBroadcast;

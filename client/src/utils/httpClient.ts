@@ -63,30 +63,38 @@ async function applyScriptResult(
       state.setExtractedVariable(key, value);
     });
   }
-  if (scriptResult.collectionVariableUpdates) {
-    const col = request.collectionId
-      ? state.collections.find((c: any) => c.id === request.collectionId)
-      : undefined;
-    if (col) {
+  if (scriptResult.collectionVariableUpdates && Object.keys(scriptResult.collectionVariableUpdates).length > 0) {
+    if (!request.collectionId) {
+      console.warn('[Script] pm.collectionVariables.set() called but request has no collectionId. Variables not saved:', Object.keys(scriptResult.collectionVariableUpdates));
+    } else {
+      const { useStore } = await import('../store/useStore');
       Object.entries(scriptResult.collectionVariableUpdates).forEach(([key, value]) => {
+        const freshState = useStore.getState();
+        const col = freshState.collections.find((c: any) => c.id === request.collectionId);
+        if (!col) {
+          console.warn(`[Script] Collection ${request.collectionId} not found in store. Cannot set variable "${key}".`);
+          return;
+        }
         const existingVar = col.variables?.find((v: any) => v.key === key);
         if (existingVar) {
-          state.updateCollectionVariable(col.id, existingVar.id, { value });
+          freshState.updateCollectionVariable(col.id, existingVar.id, { value });
         } else {
-          state.addCollectionVariable(col.id, { key, value, enabled: true, type: 'string' });
+          freshState.addCollectionVariable(col.id, { key, value, enabled: true, type: 'string' });
         }
       });
     }
   }
   if (scriptResult.collectionVariableDeletes && scriptResult.collectionVariableDeletes.length > 0) {
-    const col = request.collectionId
-      ? state.collections.find((c: any) => c.id === request.collectionId)
-      : undefined;
-    if (col) {
+    if (request.collectionId) {
+      const { useStore } = await import('../store/useStore');
       for (const key of scriptResult.collectionVariableDeletes) {
-        const existingVar = col.variables?.find((v: any) => v.key === key);
-        if (existingVar) {
-          state.deleteCollectionVariable(col.id, existingVar.id);
+        const freshState = useStore.getState();
+        const col = freshState.collections.find((c: any) => c.id === request.collectionId);
+        if (col) {
+          const existingVar = col.variables?.find((v: any) => v.key === key);
+          if (existingVar) {
+            freshState.deleteCollectionVariable(col.id, existingVar.id);
+          }
         }
       }
     }

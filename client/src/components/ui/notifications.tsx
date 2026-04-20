@@ -24,7 +24,7 @@ const NotificationViewport = React.forwardRef<
 NotificationViewport.displayName = ToastPrimitives.Viewport.displayName;
 
 const notificationVariants = cva(
-  "group pointer-events-auto relative flex w-full flex-col overflow-hidden rounded transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full shadow-[0px_1px_3px_0px_rgba(0,0,0,0.12)]",
+  "group pointer-events-auto relative flex w-full flex-col overflow-hidden rounded transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full shadow-sm",
   {
     variants: {
       variant: {

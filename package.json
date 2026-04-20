@@ -1,22 +1,70 @@
 {
   "name": "usbx-api-client",
   "displayName": "USBX API Client",
-  "description": "A full-featured API client for VS Code",
+  "description": "Build, test, and debug APIs without leaving your editor. A full-featured Postman-like client for VS Code.",
   "version": "1.0.0",
   "publisher": "usbx",
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
+  "categories": ["Testing", "Other"],
+  "keywords": ["api", "rest", "http", "postman", "graphql", "websocket", "api-client", "api-testing"],
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
   "activationEvents": [],
   "main": "./dist/extension.js",
+  "icon": "media/icon.svg",
   "contributes": {
     "commands": [
       {
         "command": "usbx-api-client.open",
         "title": "USBX: Open API Client"
+      },
+      {
+        "command": "usbx-api-client.newRequest",
+        "title": "USBX: New Request",
+        "icon": "$(add)"
+      },
+      {
+        "command": "usbx-api-client.openSettings",
+        "title": "USBX: Open Settings",
+        "icon": "$(gear)"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "usbx-api-client",
+          "title": "USBX API Client",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "usbx-api-client": [
+        {
+          "type": "webview",
+          "id": "usbx-api-client.sidebar",
+          "name": "API Client"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "usbx-api-client.newRequest",
+          "when": "view == usbx-api-client.sidebar",
+          "group": "navigation"
+        },
+        {
+          "command": "usbx-api-client.openSettings",
+          "when": "view == usbx-api-client.sidebar",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "license": "MIT",
   "scripts": {

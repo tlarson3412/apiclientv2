@@ -82,7 +82,7 @@ function DatePicker({
           </button>
         </PopoverTrigger>
         <PopoverContent 
-          className="w-auto p-0 border border-utility-subdued bg-surface rounded overflow-hidden shadow-[0px_4px_6px_-1px_rgba(0,0,0,0.12),0px_2px_4px_-1px_rgba(0,0,0,0.12)]" 
+          className="w-auto p-0 border border-utility-subdued bg-surface rounded overflow-hidden shadow-md" 
           align="start"
         >
           <Calendar
@@ -191,7 +191,7 @@ function DateRangePicker({
           </button>
         </PopoverTrigger>
         <PopoverContent 
-          className="w-auto p-0 border border-utility-subdued bg-surface rounded overflow-hidden shadow-[0px_4px_6px_-1px_rgba(0,0,0,0.12),0px_2px_4px_-1px_rgba(0,0,0,0.12)]" 
+          className="w-auto p-0 border border-utility-subdued bg-surface rounded overflow-hidden shadow-md" 
           align="start"
         >
           <Calendar

@@ -142,30 +142,35 @@
   --elevate-1: rgba(255, 255, 255, .05);
   --elevate-2: rgba(255, 255, 255, .10);
 
-  --label-vivid: 210 20% 90%;
-  --label-mid: 215 16% 72%;
-  --label-muted: 218 12% 55%;
+  /* Text hierarchy — bridged to VS Code foreground tokens */
+  --label-vivid: var(--vsc-foreground, 210 20% 90%);
+  --label-mid: var(--vsc-description-fg, 215 16% 72%);
+  --label-muted: var(--vsc-disabled-fg, 218 12% 55%);
   --label-white: 0 0% 100%;
 
+  /* Brand colors — kept fixed for product identity */
   --standard-vivid: 220 100% 70%;
   --standard-subdued: 223 78% 60%;
   --standard-muted: 220 30% 15%;
 
-  --utility-white: 220 17% 12%;
-  --utility-vivid: 215 16% 72%;
-  --utility-mid: 218 12% 45%;
-  --utility-subdued: 220 16% 24%;
-  --utility-muted: 220 18% 16%;
+  /* Utility — borders and UI chrome bridged to VS Code */
+  --utility-white: var(--vsc-background, 220 17% 12%);
+  --utility-vivid: var(--vsc-foreground, 215 16% 72%);
+  --utility-mid: var(--vsc-disabled-fg, 218 12% 45%);
+  --utility-subdued: var(--vsc-border, 220 16% 24%);
+  --utility-muted: var(--vsc-hover-bg, 220 18% 16%);
   --utility-overlay: 220 17% 5%;
 
-  --surface: 220 17% 10%;
-  --surface-alternate-muted: 220 18% 13%;
+  /* Surfaces — bridged to VS Code editor/sidebar backgrounds */
+  --surface: var(--vsc-background, 220 17% 10%);
+  --surface-alternate-muted: var(--vsc-sidebar-bg, 220 18% 13%);
 
-  --disabled-element: 220 16% 24%;
-  --disabled-foreground: 218 12% 45%;
+  --disabled-element: var(--vsc-border, 220 16% 24%);
+  --disabled-foreground: var(--vsc-disabled-fg, 218 12% 45%);
 
   --highlight-subdued: 356 68% 55%;
 
+  /* Status colors — kept fixed for semantic consistency */
   --status-info-mid: 222 79% 65%;
   --status-info-muted: 222 30% 18%;
   --status-info-subdued: 222 60% 40%;
@@ -182,59 +187,65 @@
   --status-danger-muted: 356 25% 16%;
   --status-danger-subdued: 356 40% 35%;
 
-  --background: 0 0% 0%;
-  --foreground: 200 6.6667% 91.1765%;
-  --border: 210 5.2632% 14.9020%;
-  --input: 207.6923 27.6596% 18.4314%;
-  --ring: 202.8169 89.1213% 53.1373%;
+  /* Core semantic tokens — bridged to VS Code theme */
+  --background: var(--vsc-background, 220 13% 12%);
+  --foreground: var(--vsc-foreground, 200 7% 91%);
+  --border: var(--vsc-border, 210 5% 15%);
+  --input: var(--vsc-input, 208 28% 18%);
+  --ring: var(--vsc-ring, 203 89% 53%);
 
-  --card: 228 9.8039% 10%;
-  --card-foreground: 0 0% 85.0980%;
+  --card: var(--vsc-widget-bg, 228 10% 10%);
+  --card-foreground: var(--vsc-foreground, 0 0% 85%);
 
-  --popover: 0 0% 0%;
-  --popover-foreground: 200 6.6667% 91.1765%;
+  --popover: var(--vsc-widget-bg, 228 10% 10%);
+  --popover-foreground: var(--vsc-foreground, 200 7% 91%);
 
-  --primary: 203.7736 87.6033% 52.5490%;
+  --primary: var(--vsc-primary, 204 88% 53%);
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 195.0000 15.3846% 94.9020%;
-  --secondary-foreground: 210 25% 7.8431%;
+  --secondary: 195 15% 95%;
+  --secondary-foreground: 210 25% 8%;
 
-  --muted: 0 0% 9.4118%;
-  --muted-foreground: 210 3.3898% 46.2745%;
+  --muted: var(--vsc-muted-bg, 0 0% 9%);
+  --muted-foreground: var(--vsc-description-fg, 210 3% 46%);
 
-  --accent: 205.7143 70% 7.8431%;
-  --accent-foreground: 203.7736 87.6033% 52.5490%;
+  --accent: var(--vsc-selection-bg, 206 70% 8%);
+  --accent-foreground: var(--vsc-primary, 204 88% 53%);
 
-  --destructive: 356.3033 90.5579% 54.3137%;
+  --destructive: var(--vsc-error-fg, 356 91% 54%);
   --destructive-foreground: 0 0% 100%;
 
-  --sidebar: 228 9.8039% 10%;
-  --sidebar-foreground: 0 0% 85.0980%;
-  --sidebar-border: 205.7143 15.7895% 26.0784%;
-  --sidebar-primary: 202.8169 89.1213% 53.1373%;
+  /* Sidebar — bridged to VS Code sidebar */
+  --sidebar: var(--vsc-sidebar-bg, 228 10% 10%);
+  --sidebar-foreground: var(--vsc-sidebar-fg, 0 0% 85%);
+  --sidebar-border: var(--vsc-sidebar-border, 206 16% 26%);
+  --sidebar-primary: var(--vsc-primary, 203 89% 53%);
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 205.7143 70% 7.8431%;
-  --sidebar-accent-foreground: 203.7736 87.6033% 52.5490%;
-  --sidebar-ring: 202.8169 89.1213% 53.1373%;
+  --sidebar-accent: var(--vsc-selection-bg, 206 70% 8%);
+  --sidebar-accent-foreground: var(--vsc-primary, 204 88% 53%);
+  --sidebar-ring: var(--vsc-ring, 203 89% 53%);
+
   --radius: 1.3rem;
-  --shadow: 0px 2px 4px 0px rgba(255, 255, 255, 0.03), 0px 1px 2px -1px rgba(255, 255, 255, 0.05);
+  --shadow: 0px 2px 4px 0px rgba(0, 0, 0, 0.25), 0px 1px 2px -1px rgba(0, 0, 0, 0.20);
   --chart-1: hsl(203.8863 88.2845% 53.1373%);
   --chart-2: hsl(159.7826 100% 36.0784%);
   --chart-3: hsl(42.0290 92.8251% 56.2745%);
   --chart-4: hsl(147.1429 78.5047% 41.9608%);
   --chart-5: hsl(341.4894 75.2000% 50.9804%);
   --spacing: 0.25rem;
-  --font-mono: Menlo, Consolas, 'Courier New', monospace;
-  --font-sans: Open Sans, sans-serif;
-  --shadow-lg: 0px 4px 8px 0px rgba(0, 0, 0, 0.20), 0px 4px 6px -1px rgba(0, 0, 0, 0.15);
-  --shadow-md: 0px 4px 6px 0px rgba(0, 0, 0, 0.15), 0px 2px 4px -1px rgba(0, 0, 0, 0.12);
-  --shadow-sm: 0px 2px 4px 0px rgba(0, 0, 0, 0.12), 0px 1px 2px -1px rgba(0, 0, 0, 0.10);
-  --shadow-xl: 0px 8px 16px 0px rgba(0, 0, 0, 0.25), 0px 8px 10px -1px rgba(0, 0, 0, 0.15);
-  --shadow-xs: 0px 1px 2px 0px rgba(0, 0, 0, 0.12);
+
+  /* Fonts — inherit VS Code's configured fonts */
+  --font-mono: var(--vscode-editor-font-family, Menlo, Consolas, 'Courier New', monospace);
+  --font-sans: var(--vscode-font-family, Open Sans, sans-serif);
   --font-serif: Georgia, serif;
-  --shadow-2xl: 0px 12px 24px 0px rgba(0, 0, 0, 0.30);
-  --shadow-2xs: 0px 1px 1px 0px rgba(0, 0, 0, 0.08);
+
+  --shadow-lg: 0px 4px 8px 0px rgba(0, 0, 0, 0.30), 0px 4px 6px -1px rgba(0, 0, 0, 0.20);
+  --shadow-md: 0px 4px 6px 0px rgba(0, 0, 0, 0.20), 0px 2px 4px -1px rgba(0, 0, 0, 0.15);
+  --shadow-sm: 0px 2px 4px 0px rgba(0, 0, 0, 0.15), 0px 1px 2px -1px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0px 8px 16px 0px rgba(0, 0, 0, 0.30), 0px 8px 10px -1px rgba(0, 0, 0, 0.20);
+  --shadow-xs: 0px 1px 2px 0px rgba(0, 0, 0, 0.15);
+  --shadow-2xl: 0px 12px 24px 0px rgba(0, 0, 0, 0.35);
+  --shadow-2xs: 0px 1px 1px 0px rgba(0, 0, 0, 0.10);
   --tracking-normal: 0em;
 }
 
